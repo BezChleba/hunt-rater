@@ -430,14 +430,24 @@ function myShortlist(id){ const e=myLatest(id,"shortlist"); return e?e.value===t
 /* ---------------------------------------------------------------
    AGGREGATION across everyone (me + imported voters)
    --------------------------------------------------------------- */
+// order-independent signature for an event (Postgres jsonb may reorder keys)
+function evSig(e){ return Object.keys(e).sort().map(k=>k+":"+JSON.stringify(e[k])).join("|"); }
 function allVoterEvents(){
   const map = {};
   // 1) everyone from the shared backend, grouped by voter
   for(const e of state.cloudEvents){ const v=e.voter||"?"; (map[v]=map[v]||[]).push(e); }
   // 2) manually imported links/files fill any voters the backend doesn't have
   for(const v in state.imported){ if(!map[v]) map[v] = state.imported[v].events || []; }
-  // 3) my own local log is always authoritative for me (includes votes not yet synced)
-  if(state.voter) map[state.voter] = state.events;
+  // 3) MERGE my local log into my cloud events (dedup), so my already-synced votes
+  //    still show even when this device's local log is empty (e.g. a fresh/incognito session)
+  if(state.voter){
+    const mine=(map[state.voter]||[]).slice();
+    const seen=new Set(mine.map(evSig));
+    for(const e of state.events){ const s=evSig(e); if(!seen.has(s)){ seen.add(s); mine.push(e); } }
+    map[state.voter]=mine;
+  }
+  // 4) dedup every voter (guards against duplicate rows from a retried sync)
+  for(const v in map){ const seen=new Set(); map[v]=map[v].filter(e=>{ const s=evSig(e); if(seen.has(s)) return false; seen.add(s); return true; }); }
   return map;
 }
 
