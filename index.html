@@ -381,7 +381,7 @@ const K_VOTER="hunt_voter", K_EVENTS="hunt_events", K_IMPORTED="hunt_imported", 
 
 /* ---- runtime state ---- */
 const state = {
-  voter: localStorage.getItem(K_VOTER) || null,
+  voter: readVoter(),
   events: load(K_EVENTS, []),
   imported: load(K_IMPORTED, {}),   // voter -> {exportedAt, events}
   cloudEvents: [],                  // everyone's events pulled from the shared backend
@@ -400,6 +400,11 @@ const state = {
 
 function load(k, fallback){ try{ return JSON.parse(localStorage.getItem(k)) ?? fallback; }catch(e){ return fallback; } }
 function save(k, v){ localStorage.setItem(k, JSON.stringify(v)); }
+// voter name is stored as a PLAIN string (never JSON-quoted) and read defensively,
+// so a value accidentally saved as '"Arturo"' is stripped back to Arturo.
+function normVoter(v){ return typeof v==="string" ? v.replace(/^"+|"+$/g,"").trim() : v; }
+function readVoter(){ let v=localStorage.getItem(K_VOTER); if(v==null) return null; if(v[0]==='"'){ try{ v=JSON.parse(v); }catch(e){} } v=normVoter(v); return v||null; }
+function writeVoter(name){ localStorage.setItem(K_VOTER, normVoter(name)); }
 const $ = s => document.querySelector(s);
 const esc = s => String(s==null?"":s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const nowISO = () => new Date().toISOString();
@@ -435,9 +440,9 @@ function evSig(e){ return Object.keys(e).sort().map(k=>k+":"+JSON.stringify(e[k]
 function allVoterEvents(){
   const map = {};
   // 1) everyone from the shared backend, grouped by voter
-  for(const e of state.cloudEvents){ const v=e.voter||"?"; (map[v]=map[v]||[]).push(e); }
+  for(const e of state.cloudEvents){ const v=normVoter(e.voter)||"?"; (map[v]=map[v]||[]).push(e); }
   // 2) manually imported links/files fill any voters the backend doesn't have
-  for(const v in state.imported){ if(!map[v]) map[v] = state.imported[v].events || []; }
+  for(const v in state.imported){ const nv=normVoter(v); if(!map[nv]) map[nv] = state.imported[v].events || []; }
   // 3) MERGE my local log into my cloud events (dedup), so my already-synced votes
   //    still show even when this device's local log is empty (e.g. a fresh/incognito session)
   if(state.voter){
@@ -479,7 +484,8 @@ async function cloudPull(){
   if(!BACKEND) return;
   try{
     const res=await fetch(SUPA_URL+"/rest/v1/ratings?select=event&order=id.asc",{ headers:supaHeaders() });
-    if(res.ok){ const rows=await res.json(); state.cloudEvents=rows.map(r=>r.event).filter(Boolean);
+    if(res.ok){ const rows=await res.json();
+      state.cloudEvents=rows.map(r=>{ const e=r.event; if(e&&typeof e.voter==="string") e.voter=normVoter(e.voter); return e; }).filter(Boolean);
       mergeAddedNames();
       if(state.view==="results") render(); else updateSync(); }
   }catch(e){/* offline: keep showing what we have */}
@@ -1267,7 +1273,7 @@ function saveNoteForCard(id){ const ta=document.querySelector(`.js-note[data-id=
   const val=ta.value.trim(); if(val!==myComment(id).trim()) addEvent({mode:"comment", id, text:val}); }
 
 /* ----- identity ----- */
-function setVoter(name){ state.voter=name; save(K_VOTER,name); state.view="hub"; render(); toast("Hi "+esc(name)+"! 👋"); }
+function setVoter(name){ name=normVoter(name); state.voter=name; writeVoter(name); state.view="hub"; render(); toast("Hi "+esc(name)+"! 👋"); }
 function changeVoter(){ flushNotes(); state.view="welcome"; render(); }
 
 /* =========================================================================
@@ -1428,6 +1434,7 @@ function iconPlus(){ return `<svg class="ic" width="34" height="34" viewBox="0 0
    ========================================================================= */
 async function init(){
   NAMES.forEach(n=>byId[n.id]=n);   // NAMES is defined by the script block below; init runs after it loads
+  if(state.voter) writeVoter(state.voter);   // migrate any old JSON-quoted voter value to a clean plain string
   mergeAddedNames();                // fold in any community-suggested names from local history
   // Did someone open a shared link? Import it, then go to results.
   const hash=location.hash;
@@ -1438,7 +1445,7 @@ async function init(){
         mergeImported(payload);
         history.replaceState(null,"",shareBase());
         if(!state.voter) state.voter = "Arturo"; // viewer is most likely Arturo collecting results
-        save(K_VOTER, state.voter);
+        writeVoter(state.voter);
         state.view="results";
       }
     }catch(e){ /* bad link: ignore, normal start */ }
