@@ -42,7 +42,7 @@
   --maxw:760px;
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
-html,body{margin:0;padding:0;}
+html,body{margin:0;padding:0;overflow-x:hidden;}
 body{
   font-family:"Spline Sans",system-ui,-apple-system,sans-serif;
   color:var(--ink);
@@ -216,11 +216,16 @@ input,textarea,select{font-family:inherit;font-size:1rem;color:var(--ink);}
 
 /* swipe */
 .swipe-stage{margin-top:10px;}
-.swipe-card{padding:24px 20px 18px;min-height:230px;display:flex;flex-direction:column;position:relative;touch-action:pan-y;will-change:transform;}
-.swipe-overlay{position:absolute;top:16px;left:16px;z-index:6;font-family:"Fraunces",serif;font-weight:700;font-size:1.7rem;
-  letter-spacing:.04em;padding:4px 14px;border:3px solid;border-radius:11px;opacity:0;pointer-events:none;transform:rotate(-9deg);}
+.swipe-card{padding:24px 20px 18px;min-height:230px;display:flex;flex-direction:column;position:relative;touch-action:pan-y;will-change:transform;overflow:hidden;}
+.swipe-content{display:flex;flex-direction:column;flex:1;position:relative;z-index:1;transition:opacity .1s linear;}
+.swipe-tint{position:absolute;inset:0;z-index:3;opacity:0;pointer-events:none;transition:opacity .1s linear;}
+.swipe-tint.yes{background:var(--green-soft);}
+.swipe-tint.no{background:var(--coral-soft);}
+.swipe-overlay{position:absolute;top:18px;left:18px;z-index:6;font-family:"Fraunces",serif;font-weight:700;font-size:1.9rem;
+  letter-spacing:.05em;padding:5px 16px;border:3.5px solid;border-radius:12px;opacity:0;pointer-events:none;transform:rotate(-9deg);
+  background:rgba(251,247,236,.85);box-shadow:var(--shadow);}
 .swipe-overlay.yes{color:var(--yes);border-color:var(--yes);}
-.swipe-overlay.no{color:var(--no);border-color:var(--no);left:auto;right:16px;transform:rotate(9deg);}
+.swipe-overlay.no{color:var(--no);border-color:var(--no);left:auto;right:18px;transform:rotate(9deg);}
 .touch-hint{display:none;text-align:center;margin:2px 0 -2px;}
 @media(hover:none) and (pointer:coarse){ .touch-hint{display:block;} }
 .swipe-actions{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:16px;}
@@ -747,22 +752,25 @@ function viewSwipe(){
     <div class="progressbar"><i style="width:${pct}%"></i></div>
     <div class="swipe-meta"><span>${state.swipeIdx+1} of ${order.length}</span>${prev?`<span>you said: <b>${prev}</b></span>`:"<span></span>"}</div>
     <div class="card namecard swipe-card js-swipecard" data-id="${n.id}" style="margin-top:10px">
+      <div class="swipe-tint"></div>
       <div class="swipe-overlay"></div>
-      <div class="nc-top">
-        <div style="flex:1"><div class="nc-id mono">${n.id}</div>
-          <div class="nc-name">${esc(n.name)}</div>
-          ${n.variants&&n.variants.length?`<div class="nc-variants">also: ${n.variants.map(esc).join(" · ")}</div>`:""}
-        </div>${heartBtn(n.id)}
-      </div>
-      <div class="nc-meaning">${esc(n.meaning||"")}</div>
-      <div class="nc-chips">${chipsFor(n)}</div>
-      ${axesFor(n)}
-      ${noteField(n.id)}
-      <div class="touch-hint tiny muted">Swipe the card → yes, ← no (or use the buttons)</div>
-      <div class="swipe-actions">
-        <button class="btn sa no" data-action="swipe" data-id="${n.id}" data-val="no"><span class="em">✕</span>No <span class="kbd">←</span></button>
-        <button class="btn sa maybe" data-action="swipe" data-id="${n.id}" data-val="maybe"><span class="em">~</span>Maybe <span class="kbd">↑</span></button>
-        <button class="btn sa yes" data-action="swipe" data-id="${n.id}" data-val="yes"><span class="em">✓</span>Yes <span class="kbd">→</span></button>
+      <div class="swipe-content">
+        <div class="nc-top">
+          <div style="flex:1"><div class="nc-id mono">${n.id}</div>
+            <div class="nc-name">${esc(n.name)}</div>
+            ${n.variants&&n.variants.length?`<div class="nc-variants">also: ${n.variants.map(esc).join(" · ")}</div>`:""}
+          </div>${heartBtn(n.id)}
+        </div>
+        <div class="nc-meaning">${esc(n.meaning||"")}</div>
+        <div class="nc-chips">${chipsFor(n)}</div>
+        ${axesFor(n)}
+        ${noteField(n.id)}
+        <div class="touch-hint tiny muted">Swipe the card → yes, ← no (or use the buttons)</div>
+        <div class="swipe-actions">
+          <button class="btn sa no" data-action="swipe" data-id="${n.id}" data-val="no"><span class="em">✕</span>No <span class="kbd">←</span></button>
+          <button class="btn sa maybe" data-action="swipe" data-id="${n.id}" data-val="maybe"><span class="em">~</span>Maybe <span class="kbd">↑</span></button>
+          <button class="btn sa yes" data-action="swipe" data-id="${n.id}" data-val="yes"><span class="em">✓</span>Yes <span class="kbd">→</span></button>
+        </div>
       </div>
     </div>
     <div class="duel-skip"><button class="btn ghost sm" data-action="swipe-back" ${state.swipeIdx===0?"disabled style=opacity:.4":""}>‹ Previous</button></div>
@@ -1244,13 +1252,21 @@ function setOverlay(ov, dir, amt){
 function bindSwipe(){
   const card=document.querySelector(".js-swipecard"); if(!card) return;
   const overlay=card.querySelector(".swipe-overlay");
+  const tint=card.querySelector(".swipe-tint");
+  const content=card.querySelector(".swipe-content");
   const id=card.dataset.id;
   const THRESH=Math.min(150, Math.max(70, card.offsetWidth*0.28));
   let active=false, lock=null, sx=0, sy=0, dx=0, pid=null;
+  const paint=(dir, amt)=>{
+    setOverlay(overlay, dir, dir?Math.max(0.15, amt):0);
+    if(content) content.style.opacity = String(1 - amt*0.8);       // fade content out as you pull
+    if(tint){ tint.className = "swipe-tint"+(dir?(" "+dir):""); tint.style.opacity = dir?String(amt):"0"; }
+  };
+  const reset=()=>{ if(content) content.style.opacity=""; if(tint) tint.style.opacity="0"; setOverlay(overlay,null,0); };
   card.addEventListener("pointerdown", e=>{
     if(e.target.closest("textarea,button,input,.note,.heart")) return;
     active=true; lock=null; dx=0; sx=e.clientX; sy=e.clientY; pid=e.pointerId;
-    card.style.transition="none";
+    card.style.transition="none"; if(content) content.style.transition="opacity .1s linear";
   });
   card.addEventListener("pointermove", e=>{
     if(!active) return;
@@ -1262,7 +1278,7 @@ function bindSwipe(){
     if(lock!=="x") return;            // vertical → let the page scroll
     dx=ddx;
     card.style.transform="translateX("+dx+"px) rotate("+(dx/22)+"deg)";
-    setOverlay(overlay, dx>30?"yes":dx<-30?"no":null, Math.min(1, Math.abs(dx)/THRESH));
+    paint(dx>20?"yes":dx<-20?"no":null, Math.min(1, Math.abs(dx)/THRESH));
   });
   const end=()=>{
     if(!active) return; const wasX=lock==="x"; active=false; lock=null;
@@ -1271,11 +1287,12 @@ function bindSwipe(){
     const val = dx>THRESH ? "yes" : dx<-THRESH ? "no" : null;
     if(val){
       const fx = val==="yes" ? 700 : -700;
+      paint(val, 1);
       card.style.transform="translateX("+fx+"px) rotate("+(fx/22)+"deg)";
       card.style.opacity="0";
       setTimeout(()=>doSwipe(id,val), 170);
     } else {
-      card.style.transform=""; setOverlay(overlay,null,0);
+      card.style.transform=""; reset();
     }
   };
   card.addEventListener("pointerup", end);
