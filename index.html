@@ -82,6 +82,9 @@ input,textarea,select{font-family:inherit;font-size:1rem;color:var(--ink);}
 .whoami{display:flex;align-items:center;gap:7px;background:var(--card);border:1px solid var(--line);
   padding:6px 11px;border-radius:999px;font-size:.82rem;font-weight:600;box-shadow:var(--shadow);}
 .whoami .dot{width:8px;height:8px;border-radius:50%;background:var(--coral);}
+.syncchip{font-size:.72rem;font-weight:700;padding:6px 10px;border-radius:999px;border:1px solid var(--line);white-space:nowrap;}
+.syncchip.ok{background:var(--green-soft);color:var(--green-deep);border-color:#c5dcc8;}
+.syncchip.pending{background:var(--gold-soft);color:#8a6a12;border-color:#e6d4a0;}
 .whoami button{font-size:.74rem;color:var(--green);font-weight:700;text-decoration:underline;}
 
 /* ---------- generic ---------- */
@@ -348,14 +351,24 @@ input,textarea,select{font-family:inherit;font-size:1rem;color:var(--ink);}
 /* ---- the people who vote (edit this list any time) ---- */
 const PEOPLE = ["Arturo","Cait","Tim","Yvette","Rae"];
 
+/* ---- shared backend (Supabase): auto-saves every vote so nobody has to send anything.
+   Leave both blank to stay link-only. The anon/public key is safe to embed; the table
+   is append-only (insert + read, no update/delete) so no vote can overwrite another.
+   NEVER put the service_role key here. ---- */
+const SUPA_URL = "https://buxsjqmtexrbzrxdvvge.supabase.co";   // Supabase project URL
+const SUPA_KEY = "sb_publishable_1RGZ-ueofBygPlp-AAMfFw_-d-IOhgH";   // anon / publishable key (safe to embed; NOT service_role)
+const BACKEND  = !!(SUPA_URL && SUPA_KEY);
+
 /* ---- storage keys ---- */
-const K_VOTER="hunt_voter", K_EVENTS="hunt_events", K_IMPORTED="hunt_imported";
+const K_VOTER="hunt_voter", K_EVENTS="hunt_events", K_IMPORTED="hunt_imported", K_OUTBOX="hunt_outbox";
 
 /* ---- runtime state ---- */
 const state = {
   voter: localStorage.getItem(K_VOTER) || null,
   events: load(K_EVENTS, []),
   imported: load(K_IMPORTED, {}),   // voter -> {exportedAt, events}
+  cloudEvents: [],                  // everyone's events pulled from the shared backend
+  outbox: load(K_OUTBOX, []),       // my events waiting to be saved to the backend
   view: "welcome",
   swipeIdx: 0,
   duel: null,
@@ -382,6 +395,7 @@ function addEvent(ev){
   ev.voter = state.voter;
   state.events.push(ev);
   save(K_EVENTS, state.events);
+  cloudPush(ev);
 }
 // my latest value for a name in a given mode
 function myLatest(id, mode, axis){
@@ -401,12 +415,53 @@ function myShortlist(id){ const e=myLatest(id,"shortlist"); return e?e.value===t
    --------------------------------------------------------------- */
 function allVoterEvents(){
   const map = {};
+  // 1) everyone from the shared backend, grouped by voter
+  for(const e of state.cloudEvents){ const v=e.voter||"?"; (map[v]=map[v]||[]).push(e); }
+  // 2) manually imported links/files fill any voters the backend doesn't have
+  for(const v in state.imported){ if(!map[v]) map[v] = state.imported[v].events || []; }
+  // 3) my own local log is always authoritative for me (includes votes not yet synced)
   if(state.voter) map[state.voter] = state.events;
-  for(const v in state.imported){
-    if(v===state.voter) continue;       // my own local copy always wins for me
-    map[v] = state.imported[v].events || [];
-  }
   return map;
+}
+
+/* =========================================================================
+   SHARED BACKEND (Supabase) — auto-save + live pull. Append-only.
+   ========================================================================= */
+function supaHeaders(){ return { apikey:SUPA_KEY, Authorization:"Bearer "+SUPA_KEY }; }
+function cloudPush(ev){
+  if(!BACKEND) return;
+  state.outbox.push(ev); save(K_OUTBOX, state.outbox); updateSync();
+  flushOutbox();
+}
+let flushing=false;
+async function flushOutbox(){
+  if(!BACKEND || flushing || !state.outbox.length) return;
+  flushing=true;
+  try{
+    const batch=state.outbox.slice(0,100);
+    const rows=batch.map(e=>({voter:e.voter||state.voter||null, event:e}));
+    const res=await fetch(SUPA_URL+"/rest/v1/ratings",{ method:"POST",
+      headers:{...supaHeaders(), "Content-Type":"application/json", Prefer:"return=minimal"},
+      body:JSON.stringify(rows) });
+    if(res.ok){ state.outbox=state.outbox.slice(batch.length); save(K_OUTBOX, state.outbox); }
+  }catch(e){/* offline: keep in outbox, retry later */}
+  flushing=false; updateSync();
+  if(state.outbox.length) setTimeout(flushOutbox, 5000);
+}
+async function cloudPull(){
+  if(!BACKEND) return;
+  try{
+    const res=await fetch(SUPA_URL+"/rest/v1/ratings?select=event&order=id.asc",{ headers:supaHeaders() });
+    if(res.ok){ const rows=await res.json(); state.cloudEvents=rows.map(r=>r.event).filter(Boolean);
+      if(state.view==="results") render(); else updateSync(); }
+  }catch(e){/* offline: keep showing what we have */}
+}
+function updateSync(){
+  const el=document.getElementById("syncchip"); if(!el) return;
+  if(!BACKEND){ el.style.display="none"; return; }
+  const n=state.outbox.length;
+  el.className="syncchip "+(n?"pending":"ok");
+  el.textContent = n ? ("Saving "+n+"…") : "Saved ✓";
 }
 function voterList(){ return Object.keys(allVoterEvents()); }
 
@@ -508,6 +563,7 @@ function render(){
     if(!state.activeId || !f.some(n=>n.id===state.activeId)) state.activeId = f[0] ? f[0].id : null;
     if(state.activeId) setActive(state.activeId);
   }
+  updateSync();
   window.scrollTo({top:0,behavior:"auto"});
 }
 
@@ -517,6 +573,7 @@ function topbar(){
     ${compassSVG(38)}
     <div class="brand-txt"><span class="kicker">The Hunt</span><span class="ttl">Name Rater</span></div>
     <div class="spacer"></div>
+    ${BACKEND?`<span id="syncchip" class="syncchip ok">Saved ✓</span>`:""}
     <div class="whoami"><span class="dot"></span>${esc(state.voter)} <button data-action="change-voter">change</button></div>
   </div>`;
 }
@@ -569,7 +626,9 @@ function viewHub(){
         ${iconTrophy()}<div class="body"><h3>See the leaderboard</h3><p>Combined standings from everyone who's voted so far.</p></div></button>
     </div>
     <div class="dashed"></div>
-    <p class="muted tiny">Your votes live only on this device until you tap <b>Send my ratings</b> below. Nothing is uploaded anywhere automatically.</p>
+    <p class="muted tiny">${BACKEND
+      ? "Your votes save automatically as you go — nothing to send. The <b>Send my ratings</b> button below is just a backup."
+      : "Your votes live only on this device until you tap <b>Send my ratings</b> below. Nothing is uploaded anywhere automatically."}</p>
   </div>`;
 }
 
@@ -1171,7 +1230,7 @@ async function openShare(){
   const tooLong=lastLink.length>14000;
   sheet(`<div class="grab"></div>
     <h2>Send your ratings to Arturo</h2>
-    <p class="muted" style="margin:8px 0 0">You've left votes or notes on <b>${n}</b> name${n===1?"":"s"}. Send them over so they land in the shared leaderboard. Nothing is uploaded automatically.</p>
+    <p class="muted" style="margin:8px 0 0">You've left votes or notes on <b>${n}</b> name${n===1?"":"s"}. ${BACKEND?"These already save automatically — this link is just a backup or a way to share your picks.":"Send them over so they land in the shared leaderboard. Nothing is uploaded automatically."}</p>
     ${tooLong?`<p class="tiny" style="color:var(--no);font-weight:700;margin-top:10px">Your link is very long — use “Download file” below instead and send that.</p>`:`<div class="linkbox">${esc(lastLink)}</div>`}
     <div class="stack">
       ${tooLong?"":`<button class="btn primary block" data-action="copy-link">📋 Copy link</button>
@@ -1304,6 +1363,12 @@ async function init(){
   if(!state.voter && state.view!=="results") state.view="welcome";
   else if(state.voter && state.view==="welcome") state.view="hub";
   render();
+  if(BACKEND){
+    flushOutbox(); cloudPull();
+    window.addEventListener("online", flushOutbox);
+    document.addEventListener("visibilitychange", ()=>{ if(!document.hidden){ flushOutbox(); cloudPull(); } });
+    setInterval(()=>{ flushOutbox(); if(state.view==="results") cloudPull(); }, 15000);
+  }
 }
 if(document.readyState==="loading") document.addEventListener("DOMContentLoaded", init);
 else init();
