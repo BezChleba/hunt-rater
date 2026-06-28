@@ -315,7 +315,18 @@ input,textarea,select{font-family:inherit;font-size:1rem;color:var(--ink);}
 /* ---------- sticky action bar ---------- */
 .actionbar{position:fixed;left:0;right:0;bottom:0;z-index:30;
   padding:10px 16px calc(10px + env(safe-area-inset-bottom));
-  background:linear-gradient(transparent, var(--paper) 38%);}
+  background:linear-gradient(transparent, var(--paper) 38%);
+  transition:transform .3s ease, opacity .3s ease;}
+.actionbar.autohidden{transform:translateY(130%);opacity:0;pointer-events:none;}
+/* small filter icon button in a view header */
+.iconbtn{flex:none;width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  border:1.5px solid var(--line);background:var(--card);color:var(--ink-soft);box-shadow:var(--shadow);transition:transform .1s;}
+.iconbtn:active{transform:scale(.9);}
+.iconbtn.on{border-color:var(--green);color:var(--green);background:var(--green-soft);}
+/* on phones: hide the top header on every screen except the home page (reclaim space) */
+@media (hover:none) and (pointer:coarse){
+  body[data-view]:not([data-view="hub"]):not([data-view="welcome"]) #header{display:none;}
+}
 .actionbar .inner{max-width:var(--maxw);margin:0 auto;display:flex;gap:10px;}
 
 /* ---------- modal / sheet ---------- */
@@ -642,6 +653,7 @@ function render(){
     welcome: viewWelcome, hub: viewHub, swipe: viewSwipe,
     rate: viewList, comment: viewList, duel: viewDuel, results: viewResults,
   }[state.view] || viewHub);
+  document.body.dataset.view = state.view;   // lets CSS hide the header per-view on mobile
   $("#header").innerHTML = state.view==="welcome" ? "" : topbar();
   $("#app").innerHTML = viewFn();
   $("#actionbar").innerHTML = actionBar();
@@ -653,6 +665,7 @@ function render(){
     if(state.activeId) setActive(state.activeId);
   }
   updateSync();
+  showActionBar(); scheduleHide();           // reveal the bottom bar, then auto-hide after idle (mobile)
   window.scrollTo({top:0,behavior:"auto"});
 }
 
@@ -727,10 +740,10 @@ function viewHub(){
 function viewSwipe(){
   ensureQueue("swipe");
   const order=state.queueIds.map(id=>byId[id]).filter(Boolean);
-  const head=`<div class="vhead"><a class="back" data-action="go" data-view="hub">‹ Hub</a><h2>Swipe</h2></div>${focusBar("swipe")}`;
+  const head=`<div class="vhead"><a class="back" data-action="go" data-view="hub">‹ Hub</a><h2>Swipe</h2>${filterBtn("swipe")}</div>`;
   if(order.length===0){
     return `${head}<div class="empty">${compassSVG(70,"compass")}<h3 style="font-size:1.4rem">Nothing here</h3>
-      <p>No names match this focus. Try a different Focus above.</p></div>`;
+      <p>No names match this focus. Try a different filter (tap the funnel icon).</p></div>`;
   }
   if(state.swipeIdx>=order.length){
     return `${head}<div class="empty">${compassSVG(70,"compass")}<h3 style="font-size:1.4rem">That's all ${order.length}!</h3>
@@ -742,8 +755,7 @@ function viewSwipe(){
   const pct=Math.round(state.swipeIdx/order.length*100);
   const prev=mySwipe(n.id);
   return `<div class="swipe-stage fade-in">
-    <div class="vhead"><a class="back" data-action="go" data-view="hub">‹ Hub</a><h2>Swipe</h2></div>
-    ${focusBar("swipe")}
+    <div class="vhead"><a class="back" data-action="go" data-view="hub">‹ Hub</a><h2>Swipe</h2>${filterBtn("swipe")}</div>
     <div class="hint-bar"><span class="h lead">Keys:</span>
       <span class="h"><span class="kbd">←</span> no</span>
       <span class="h"><span class="kbd">↑</span> maybe</span>
@@ -782,18 +794,17 @@ function viewList(){
   const isRate=state.view==="rate";
   const list=filteredNames();
   return `<div class="fade-in">
-    <div class="vhead"><a class="back" data-action="go" data-view="hub">‹ Hub</a><h2>${isRate?"Rate":"Notes"}</h2></div>
+    <div class="vhead"><a class="back" data-action="go" data-view="hub">‹ Hub</a><h2>${isRate?"Rate":"Notes"}</h2>${filterBtn(state.view)}</div>
     <p class="subhead">${isRate?"Tap stars to score. Leave a note on any card too.":"Leave your thoughts on any name. Add stars if you like."}</p>
     ${isRate?`<div class="hint-bar"><span class="h lead">Keys:</span>
       <span class="h"><span class="kbd">1</span>–<span class="kbd">5</span> rate the highlighted card</span>
       <span class="h"><span class="kbd">F</span> shortlist</span>
       <span class="h"><span class="kbd">↑</span><span class="kbd">↓</span> move</span>
     </div>`:""}
-    ${focusBar(state.view)}
     <div class="toolbar">
       <input class="search" id="listSearch" placeholder="Search ${NAMES.length} names…" value="${esc(state.filters.search)}" data-action="filter-search">
     </div>
-    ${list.length?list.map(n=>nameCardList(n,isRate)).join(""):`<div class="empty">Nothing matches this focus or search. Try changing Focus above.</div>`}
+    ${list.length?list.map(n=>nameCardList(n,isRate)).join(""):`<div class="empty">Nothing matches this focus or search. Try changing the filter (tap the funnel icon).</div>`}
   </div>`;
 }
 function nameCardList(n, withStars){
@@ -836,11 +847,11 @@ function duelCardHTML(n,result,arrow){
 }
 function viewDuel(){
   if(!state.duel) newDuel();
-  const head=`<div class="vhead"><a class="back" data-action="go" data-view="hub">‹ Hub</a><h2>Duel</h2></div>${focusBar("duel")}`;
+  const head=`<div class="vhead"><a class="back" data-action="go" data-view="hub">‹ Hub</a><h2>Duel</h2>${filterBtn("duel")}</div>`;
   if(!state.duel){
     return `<div class="duel-wrap fade-in">${head}
       <div class="empty">${compassSVG(70,"compass")}<h3 style="font-size:1.4rem">Need two names</h3>
-      <p>This focus has fewer than two names to compare. Try a different Focus above.</p></div></div>`;
+      <p>This focus has fewer than two names to compare. Try a different filter (tap the funnel icon).</p></div></div>`;
   }
   const [a,b]=state.duel;
   const done=state.events.filter(e=>e.mode==="duel").length;
@@ -964,7 +975,7 @@ function lbRow(n,s,i){
 
 /* ---------- sticky action bar ---------- */
 function actionBar(){
-  if(state.view==="welcome") return "";
+  if(state.view==="welcome" || state.view==="hub") return "";   // home page: no bottom bar, full screen for the cards
   // With auto-save on, the leaderboard is the main action and sharing is just a backup.
   const navCls = BACKEND ? "primary" : "ghost";
   const nav = state.view==="results"
@@ -975,6 +986,13 @@ function actionBar(){
     : `<button class="btn coral block" data-action="open-share">✈ Send my ratings</button>`;
   return `<div class="actionbar"><div class="inner">${nav}${send}</div></div>`;
 }
+/* auto-hide the bottom bar on phones after 5s of no scrolling; any scroll brings it back */
+let abTimer=null;
+function isMobile(){ try{ return window.matchMedia("(hover:none) and (pointer:coarse)").matches; }catch(e){ return false; } }
+function showActionBar(){ const ab=document.querySelector(".actionbar"); if(ab) ab.classList.remove("autohidden"); }
+function hideActionBar(){ const ab=document.querySelector(".actionbar"); if(ab) ab.classList.add("autohidden"); }
+function scheduleHide(){ clearTimeout(abTimer); if(!isMobile()) return; if(state.view==="hub"||state.view==="welcome") return; abTimer=setTimeout(hideActionBar, 5000); }
+window.addEventListener("scroll", ()=>{ showActionBar(); scheduleHide(); }, {passive:true});
 
 /* =========================================================================
    FOCUS — choose which names to work on, and in what order, per mode
@@ -1077,18 +1095,28 @@ function filteredNames(){
 }
 
 // the focus toolbar shown at the top of every rating mode
-function focusBar(mode){
+function iconFilter(){ return `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5h18l-7 8v6l-4-2v-4z"/></svg>`; }
+// small filter button shown in each mode's header; opens the focus/filter panel
+function filterBtn(mode){
+  const active = state.focus!=="all" || state.filters.hideFlagged;
+  return `<button class="iconbtn ${active?"on":""}" data-action="open-filter" data-mode="${mode}" aria-label="Filter and focus">${iconFilter()}</button>`;
+}
+function filterSheet(mode){
   const count = mode==="duel" ? workingList("duel").length
               : (state.queueMode===mode ? state.queueIds.length : workingList(mode).length);
-  return `<div class="toolbar focusbar">
-    <select data-action="set-focus" aria-label="Focus">
-      ${FOCUS_OPTS.map(([v,l])=>`<option value="${v}" ${state.focus===v?"selected":""}>Focus: ${l(mode)}</option>`).join("")}
-    </select>
-    ${state.focus==="custom"?`<button class="btn ghost sm" data-action="open-custom">Edit filter ✎</button>`
-      :`<label class="chk"><input type="checkbox" data-action="filter-flag" ${state.filters.hideFlagged?"checked":""}>Hide flagged</label>`}
-    <span class="focus-count">${count} ${count===1?"name":"names"}</span>
-  </div>`;
+  return `<div class="grab"></div>
+    <h2>Filter &amp; focus</h2>
+    <label class="fld" style="margin-top:12px"><span>Show</span>
+      <select data-action="set-focus" aria-label="Focus">
+        ${FOCUS_OPTS.map(([v,l])=>`<option value="${v}" ${state.focus===v?"selected":""}>${l(mode)}</option>`).join("")}
+      </select>
+    </label>
+    ${state.focus==="custom"?`<button class="btn ghost sm block" data-action="open-custom" style="margin-bottom:12px">Edit custom filter ✎</button>`:""}
+    <label class="chk" style="width:100%"><input type="checkbox" data-action="filter-flag" ${state.filters.hideFlagged?"checked":""}> Hide flagged names</label>
+    <div class="tiny muted" style="margin-top:12px">Showing <b id="filterCount">${count}</b> of ${NAMES.length} names</div>
+    <button class="btn primary block" data-action="close-sheet" style="margin-top:14px">Done</button>`;
 }
+function openFilter(mode){ state._filterMode=mode; closeSheet(); sheet(filterSheet(mode)); }
 
 /* ---------- custom filter sheet (exposes every field) ---------- */
 function openCustom(){ closeSheet(); sheet(customSheet()); }
@@ -1176,6 +1204,7 @@ document.addEventListener("click", e=>{
     case "how-scoring": showScoring(); break;
     case "open-addname": closeSheet(); sheet(addNameSheet()); setTimeout(()=>{const i=document.getElementById("addNameInput"); if(i) i.focus();},60); break;
     case "submit-addname": submitAddName(); break;
+    case "open-filter": openFilter(t.dataset.mode||state.view); break;
     case "open-custom": openCustom(); break;
     case "apply-custom": closeSheet(); refreshAfterFilter(); break;
     case "reset-custom": state.custom=defaultCustom(); openCustom(); break;
@@ -1196,8 +1225,8 @@ document.addEventListener("input", e=>{
 });
 document.addEventListener("change", e=>{
   const t=e.target;
-  if(t.dataset.action==="filter-flag"){ state.filters.hideFlagged=t.checked; refreshAfterFilter(); }
-  else if(t.dataset.action==="set-focus"){ state.focus=t.value; refreshAfterFilter(); if(t.value==="custom") openCustom(); }
+  if(t.dataset.action==="filter-flag"){ const inSheet=!!document.getElementById("filterCount"); state.filters.hideFlagged=t.checked; refreshAfterFilter(); if(inSheet) openFilter(state._filterMode||state.view); }
+  else if(t.dataset.action==="set-focus"){ const inSheet=!!document.getElementById("filterCount"); state.focus=t.value; refreshAfterFilter(); if(t.value==="custom") openCustom(); else if(inSheet) openFilter(state._filterMode||state.view); }
   else if(t.dataset.action==="cust-set"){ setPath(state.custom,t.dataset.k,parseMaybeNum(t.value)); updateCustCount(); }
   else if(t.dataset.action==="cust-bool"){ setPath(state.custom,t.dataset.k,t.checked); updateCustCount(); }
   else if(t.dataset.action==="filter-sort"){ state.filters.sort=t.value; render(); }
