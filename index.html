@@ -1,0 +1,1346 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1F5C46">
+<meta name="robots" content="noindex, nofollow"><!-- keep this link-only; don't list in search engines -->
+<title>The Hunt · Name Rater</title>
+
+<!--
+  THE HUNT — NAME RATER  (v1)
+  ---------------------------------------------------------------
+  A single self-contained page. No server, no accounts, no database.
+  - It only READS the names below. It never touches names.json.
+  - Every vote is kept (append-only log). No vote overwrites another.
+  - Compression for share links uses the browser's BUILT-IN gzip
+    (CompressionStream). Zero external libraries, nothing to install.
+  To refresh the name list later: replace the NAMES array near the
+  bottom of this file with a fresh export from BRANDING/names.json.
+  Non-developer friendly: ask Claude to do the refresh for you.
+  ---------------------------------------------------------------
+-->
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,500&family=Spline+Sans:wght@400;500;600;700&family=Spline+Sans+Mono:wght@500&display=swap" rel="stylesheet">
+
+<style>
+:root{
+  --paper:#F2EAD9; --paper2:#E9DEC6;
+  --card:#FBF7EC; --card2:#F6EFDD;
+  --ink:#23271F; --ink-soft:#6B6452; --ink-faint:#9A9078;
+  --line:#DCCEAF; --line-strong:#C8B68C;
+  --green:#1F5C46; --green-deep:#143D2F; --green-soft:#E3EDE4;
+  --coral:#DD5429; --coral-soft:#FBE6DA;
+  --gold:#C2922B; --gold-soft:#F6ECCF;
+  --teal:#2E7D74;
+  --yes:#1F7A4D; --maybe:#C2922B; --no:#C0563B;
+  --shadow:0 1px 2px rgba(40,30,10,.06), 0 8px 24px -12px rgba(40,30,10,.18);
+  --shadow-lg:0 2px 6px rgba(40,30,10,.08), 0 26px 50px -22px rgba(40,30,10,.30);
+  --radius:16px; --radius-sm:11px;
+  --maxw:760px;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+html,body{margin:0;padding:0;}
+body{
+  font-family:"Spline Sans",system-ui,-apple-system,sans-serif;
+  color:var(--ink);
+  background-color:var(--paper);
+  background-image:
+    radial-gradient(circle at 18% -10%, rgba(46,125,116,.10), transparent 45%),
+    radial-gradient(circle at 100% 0%, rgba(221,84,41,.08), transparent 40%),
+    radial-gradient(rgba(120,100,60,.16) 1px, transparent 1px);
+  background-size:auto,auto,22px 22px;
+  background-attachment:fixed;
+  line-height:1.5;
+  -webkit-font-smoothing:antialiased;
+  min-height:100vh;
+}
+/* faint paper grain */
+body::before{
+  content:"";position:fixed;inset:0;pointer-events:none;z-index:0;opacity:.5;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.4'/%3E%3C/svg%3E");
+  mix-blend-mode:multiply;
+}
+#app{position:relative;z-index:1;max-width:var(--maxw);margin:0 auto;padding:0 16px calc(120px + env(safe-area-inset-bottom)) 16px;}
+
+h1,h2,h3{font-family:"Fraunces",Georgia,serif;font-weight:600;line-height:1.1;margin:0;letter-spacing:-.01em;}
+.mono{font-family:"Spline Sans Mono",ui-monospace,monospace;}
+button{font-family:inherit;cursor:pointer;border:none;background:none;color:inherit;font-size:1rem;}
+input,textarea,select{font-family:inherit;font-size:1rem;color:var(--ink);}
+.hide{display:none !important;}
+
+/* ---------- top bar ---------- */
+.topbar{display:flex;align-items:center;gap:12px;padding:18px 2px 14px;position:sticky;top:0;z-index:20;
+  background:linear-gradient(var(--paper) 62%, transparent);}
+.brandmark{width:38px;height:38px;flex:none;}
+.brand-txt{display:flex;flex-direction:column;line-height:1;}
+.brand-txt .kicker{font-size:.62rem;letter-spacing:.22em;text-transform:uppercase;color:var(--green);font-weight:700;}
+.brand-txt .ttl{font-family:"Fraunces",serif;font-size:1.22rem;font-weight:700;margin-top:3px;}
+.topbar .spacer{flex:1;}
+.whoami{display:flex;align-items:center;gap:7px;background:var(--card);border:1px solid var(--line);
+  padding:6px 11px;border-radius:999px;font-size:.82rem;font-weight:600;box-shadow:var(--shadow);}
+.whoami .dot{width:8px;height:8px;border-radius:50%;background:var(--coral);}
+.whoami button{font-size:.74rem;color:var(--green);font-weight:700;text-decoration:underline;}
+
+/* ---------- generic ---------- */
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);}
+.dashed{border-top:2px dashed var(--line-strong);margin:22px 0;}
+.muted{color:var(--ink-soft);}
+.tiny{font-size:.78rem;}
+.pill{display:inline-flex;align-items:center;gap:5px;font-size:.7rem;font-weight:600;padding:3px 9px;border-radius:999px;
+  background:var(--paper2);color:var(--ink-soft);border:1px solid var(--line);white-space:nowrap;}
+.pill.flag{background:var(--coral-soft);color:#9e3b18;border-color:#e6c4b2;}
+.pill.type{background:var(--green-soft);color:var(--green-deep);border-color:#c5dcc8;}
+.row{display:flex;gap:10px;align-items:center;}
+.wrap{flex-wrap:wrap;}
+
+/* ---------- buttons ---------- */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:50px;padding:0 20px;border-radius:13px;
+  font-weight:700;font-size:1rem;background:var(--card);border:1.5px solid var(--line-strong);box-shadow:var(--shadow);
+  transition:transform .08s ease, box-shadow .15s ease;}
+.btn:active{transform:translateY(1px) scale(.99);}
+.btn.primary{background:var(--green);color:#FBF7EC;border-color:var(--green-deep);}
+.btn.coral{background:var(--coral);color:#fff;border-color:#b53f1c;}
+.btn.ghost{background:transparent;box-shadow:none;border-color:var(--line);}
+.btn.sm{min-height:40px;padding:0 14px;font-size:.86rem;border-radius:10px;}
+.btn.block{width:100%;}
+
+/* keyboard hints */
+.kbd{display:inline-flex;align-items:center;justify-content:center;min-width:19px;height:19px;padding:0 5px;border-radius:5px;
+  background:var(--paper2);border:1px solid var(--line-strong);box-shadow:0 1.5px 0 var(--line-strong);
+  font-family:"Spline Sans Mono",monospace;font-size:.7rem;font-weight:600;color:var(--ink-soft);line-height:1;}
+.btn.primary .kbd,.btn.coral .kbd{background:rgba(255,255,255,.18);border-color:rgba(255,255,255,.35);box-shadow:none;color:#fff;}
+.hint-bar{display:flex;flex-wrap:wrap;gap:7px 16px;align-items:center;font-size:.78rem;color:var(--ink-soft);font-weight:600;
+  background:var(--card2);border:1px dashed var(--line-strong);border-radius:11px;padding:9px 13px;margin:-2px 0 14px;}
+.hint-bar .h{display:inline-flex;align-items:center;gap:5px;}
+.hint-bar .lead{color:var(--green);font-weight:700;}
+@media(hover:none) and (pointer:coarse){ .kbd{display:none;} .hint-bar{display:none;} .snums{display:none;} }
+
+/* ---------- welcome ---------- */
+.welcome{padding-top:6vh;text-align:center;animation:rise .5s ease both;}
+.welcome .compass{width:96px;height:96px;margin:0 auto 18px;display:block;}
+.welcome h1{font-size:clamp(2.1rem,9vw,3.1rem);}
+.welcome h1 em{font-style:italic;color:var(--coral);}
+.welcome .lede{max-width:430px;margin:14px auto 0;color:var(--ink-soft);font-size:1.02rem;}
+.namegrid{display:grid;grid-template-columns:repeat(2,1fr);gap:11px;max-width:420px;margin:26px auto 0;}
+.namegrid .who{min-height:60px;font-family:"Fraunces",serif;font-size:1.18rem;font-weight:600;
+  background:var(--card);border:1.5px solid var(--line-strong);border-radius:14px;box-shadow:var(--shadow);
+  transition:transform .08s, border-color .15s, background .15s;}
+.namegrid .who:active{transform:translateY(1px);}
+.namegrid .who:hover{border-color:var(--green);}
+.namegrid .who.other{grid-column:span 2;color:var(--green);}
+.otherbox{max-width:420px;margin:14px auto 0;display:flex;gap:9px;}
+.otherbox input{flex:1;min-height:52px;padding:0 16px;border-radius:13px;border:1.5px solid var(--line-strong);background:var(--card);}
+
+/* ---------- hub ---------- */
+.hub-head{margin:8px 0 4px;}
+.hub-head h2{font-size:1.7rem;}
+.progress-strip{display:flex;gap:8px;overflow-x:auto;padding:14px 0 4px;margin:0 -2px;}
+.stat{flex:none;min-width:96px;background:var(--card);border:1px solid var(--line);border-radius:13px;padding:11px 13px;box-shadow:var(--shadow);}
+.stat .n{font-family:"Fraunces",serif;font-size:1.5rem;font-weight:700;line-height:1;}
+.stat .l{font-size:.68rem;text-transform:uppercase;letter-spacing:.09em;color:var(--ink-soft);margin-top:5px;font-weight:600;}
+.stat .n small{font-size:.8rem;color:var(--ink-faint);font-weight:600;}
+
+.modes{display:grid;grid-template-columns:repeat(2,1fr);gap:13px;margin-top:18px;}
+.mode{position:relative;overflow:hidden;text-align:left;padding:18px 16px 16px;border-radius:var(--radius);
+  background:var(--card);border:1px solid var(--line);box-shadow:var(--shadow);min-height:128px;
+  display:flex;flex-direction:column;justify-content:space-between;transition:transform .1s, box-shadow .2s;}
+.mode:active{transform:translateY(1px);}
+.mode:hover{box-shadow:var(--shadow-lg);}
+.mode .ic{width:34px;height:34px;}
+.mode h3{font-size:1.22rem;margin-top:10px;}
+.mode p{font-size:.82rem;color:var(--ink-soft);margin:4px 0 0;}
+.mode .tag{position:absolute;top:13px;right:13px;}
+.mode.wide{grid-column:span 2;flex-direction:row;align-items:center;gap:16px;min-height:0;padding:16px;}
+.mode.wide .body{flex:1;}
+.mode.wide h3{margin-top:0;}
+.mode.results{background:linear-gradient(135deg,var(--green) 0%,var(--green-deep) 100%);color:#F4EAD6;border-color:var(--green-deep);}
+.mode.results p{color:#cfe0d2;}
+
+/* ---------- view header ---------- */
+.vhead{display:flex;align-items:center;gap:12px;margin:6px 0 2px;}
+.vhead h2{font-size:1.55rem;flex:1;}
+.back{display:inline-flex;align-items:center;gap:6px;font-weight:700;color:var(--green);font-size:.9rem;}
+.subhead{color:var(--ink-soft);font-size:.9rem;margin:2px 0 14px;}
+
+/* ---------- name card ---------- */
+.namecard{padding:18px 17px 15px;margin-bottom:14px;}
+.nc-top{display:flex;align-items:flex-start;gap:10px;}
+.nc-id{font-size:.72rem;color:var(--ink-faint);font-weight:500;}
+.nc-name{font-family:"Fraunces",serif;font-size:1.85rem;font-weight:700;line-height:1.05;letter-spacing:-.015em;}
+.nc-variants{font-size:.78rem;color:var(--ink-faint);margin-top:2px;}
+.nc-meaning{color:var(--ink-soft);font-size:.94rem;margin:9px 0 11px;}
+.nc-chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px;}
+.heart{margin-left:auto;flex:none;width:42px;height:42px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  border:1.5px solid var(--line-strong);background:var(--card2);font-size:1.15rem;transition:transform .12s;}
+.heart.on{background:var(--coral-soft);border-color:var(--coral);transform:scale(1.05);}
+.heart:active{transform:scale(.9);}
+
+/* axis mini-scores */
+.axes{display:flex;gap:10px;margin:0 0 12px;flex-wrap:wrap;}
+.axis{display:flex;align-items:center;gap:6px;font-size:.72rem;color:var(--ink-soft);font-weight:600;}
+.axis .bar{width:42px;height:5px;border-radius:3px;background:var(--paper2);overflow:hidden;}
+.axis .bar i{display:block;height:100%;border-radius:3px;}
+
+/* comment field — ALWAYS visible on every card */
+.note{position:relative;margin-top:4px;}
+.note label{display:block;font-size:.7rem;text-transform:uppercase;letter-spacing:.08em;color:var(--ink-soft);font-weight:700;margin-bottom:5px;display:flex;align-items:center;gap:6px;}
+.note textarea{width:100%;min-height:46px;resize:vertical;padding:10px 12px;border-radius:11px;border:1.5px solid var(--line);
+  background:var(--card2);line-height:1.4;font-size:.92rem;transition:border-color .15s, background .15s;}
+.note textarea:focus{outline:none;border-color:var(--green);background:#fff;}
+.note .saved{position:absolute;right:10px;bottom:9px;font-size:.7rem;font-weight:700;color:var(--yes);opacity:0;transition:opacity .2s;pointer-events:none;}
+.note .saved.show{opacity:1;}
+
+/* stars */
+.stars{display:flex;gap:6px;margin:2px 0 14px;}
+.star{width:46px;height:46px;border-radius:11px;border:1.5px solid var(--line);background:var(--card2);
+  display:flex;align-items:center;justify-content:center;font-size:1.4rem;color:var(--ink-faint);transition:transform .1s, background .15s;}
+.star:active{transform:scale(.88);}
+.star.on{color:var(--gold);background:var(--gold-soft);border-color:var(--gold);}
+.starlabel{font-size:.78rem;color:var(--ink-soft);font-weight:600;align-self:center;margin-left:4px;}
+
+/* swipe */
+.swipe-stage{margin-top:10px;}
+.swipe-card{padding:24px 20px 18px;min-height:230px;display:flex;flex-direction:column;}
+.swipe-actions{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:16px;}
+.swipe-actions .sa{flex-direction:column;min-height:74px;gap:4px;border-radius:15px;font-size:.82rem;font-weight:700;border:1.5px solid var(--line-strong);background:var(--card);box-shadow:var(--shadow);}
+.swipe-actions .sa .em{font-size:1.5rem;line-height:1;}
+.sa.no{color:var(--no);} .sa.no:active{background:var(--coral-soft);}
+.sa.maybe{color:var(--maybe);} .sa.maybe:active{background:var(--gold-soft);}
+.sa.yes{color:var(--yes);} .sa.yes:active{background:var(--green-soft);}
+.swipe-meta{display:flex;justify-content:space-between;align-items:center;margin-top:14px;font-size:.8rem;color:var(--ink-soft);}
+.progressbar{height:6px;background:var(--paper2);border-radius:4px;overflow:hidden;margin:4px 0 0;}
+.progressbar i{display:block;height:100%;background:linear-gradient(90deg,var(--green),var(--teal));border-radius:4px;transition:width .3s;}
+
+/* duel */
+.duel-wrap{margin-top:8px;}
+.duel-grid{display:grid;grid-template-columns:1fr auto 1fr;align-items:stretch;gap:8px;}
+.duel-card{padding:16px 14px 14px;display:flex;flex-direction:column;min-width:0;}
+.duel-card .nc-name{font-size:1.35rem;word-break:break-word;}
+.duel-pick{margin-top:auto;}
+.vs{display:flex;align-items:center;justify-content:center;}
+.vs span{font-family:"Fraunces",serif;font-style:italic;font-weight:600;color:var(--coral);
+  background:var(--card);border:1.5px solid var(--line-strong);box-shadow:var(--shadow);
+  width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:1rem;}
+@media(max-width:560px){
+  .duel-grid{grid-template-columns:1fr;gap:10px;}
+  .vs{padding:2px 0;}
+}
+.duel-extra{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px;}
+.duel-extra .btn{min-height:48px;}
+.duel-extra .both{color:var(--yes);} .duel-extra .both:active{background:var(--green-soft);}
+.duel-extra .neither{color:var(--no);} .duel-extra .neither:active{background:var(--coral-soft);}
+.duel-skip{text-align:center;margin-top:14px;}
+.duel-pick .kbd{margin-left:2px;}
+
+/* active card (keyboard target in Rate) */
+.namecard.active{border-color:var(--green);box-shadow:0 0 0 2px var(--green-soft), var(--shadow);}
+.snums{display:flex;gap:6px;margin:-8px 0 12px;}
+.snums span{width:46px;text-align:center;font-size:.62rem;color:var(--ink-faint);font-weight:600;font-family:"Spline Sans Mono",monospace;}
+
+/* results */
+.toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px;}
+.toolbar input.search{flex:1;min-width:150px;min-height:42px;padding:0 14px;border-radius:11px;border:1.5px solid var(--line);background:var(--card);}
+.toolbar select{min-height:42px;padding:0 10px;border-radius:11px;border:1.5px solid var(--line);background:var(--card);font-weight:600;}
+.chk{display:inline-flex;align-items:center;gap:7px;font-size:.84rem;font-weight:600;background:var(--card);border:1.5px solid var(--line);padding:8px 12px;border-radius:11px;}
+.chk input{width:18px;height:18px;accent-color:var(--green);}
+.focusbar{margin-bottom:12px;}
+.focusbar select{flex:1;min-width:170px;font-weight:700;color:var(--green-deep);}
+.focus-count{margin-left:auto;font-size:.76rem;font-weight:700;color:var(--ink-soft);background:var(--card2);
+  border:1px solid var(--line);border-radius:999px;padding:6px 12px;white-space:nowrap;align-self:center;}
+
+.lb-row{padding:14px 15px;margin-bottom:10px;}
+.lb-head{display:flex;align-items:center;gap:12px;width:100%;text-align:left;background:none;border:none;padding:0;cursor:pointer;font:inherit;color:inherit;}
+.chev{margin-left:2px;color:var(--ink-faint);transition:transform .25s ease;flex:none;font-size:.95rem;}
+.lb-row.open .chev{transform:rotate(180deg);}
+.rank{font-family:"Fraunces",serif;font-size:1.25rem;font-weight:700;color:var(--ink-faint);width:30px;flex:none;text-align:center;}
+.rank.top{color:var(--coral);}
+.lb-name{flex:1;}
+.lb-name .nm{font-family:"Fraunces",serif;font-size:1.3rem;font-weight:700;line-height:1.05;}
+.lb-name .sub{font-size:.74rem;color:var(--ink-faint);}
+.scorebadge{flex:none;text-align:center;background:var(--green);color:#F4EAD6;border-radius:12px;padding:7px 11px;min-width:58px;}
+.scorebadge .v{font-family:"Fraunces",serif;font-size:1.35rem;font-weight:700;line-height:1;}
+.scorebadge .l{font-size:.58rem;letter-spacing:.1em;text-transform:uppercase;opacity:.85;margin-top:2px;}
+.scorebadge.none{background:var(--paper2);color:var(--ink-faint);}
+.lb-metrics{display:flex;flex-wrap:wrap;gap:8px;margin-top:11px;}
+.metric{font-size:.74rem;font-weight:600;color:var(--ink-soft);background:var(--card2);border:1px solid var(--line);border-radius:9px;padding:5px 9px;}
+.metric b{color:var(--ink);}
+.lb-detail{display:none;margin-top:12px;padding-top:12px;border-top:1px dashed var(--line-strong);font-size:.88rem;}
+.lb-row.open .lb-detail{display:block;animation:rise .22s ease both;}
+.lb-meaning{margin:0 0 8px;color:var(--ink-soft);}
+.lb-block{margin-top:11px;}
+.lb-block h4{font-size:.7rem;text-transform:uppercase;letter-spacing:.08em;color:var(--ink-soft);font-weight:700;margin:0 0 6px;}
+.lb-block .who{font-weight:700;color:var(--green-deep);}
+.cmt{background:var(--card2);border-left:3px solid var(--gold);border-radius:6px;padding:6px 10px;margin:6px 0;font-size:.86rem;}
+.cmt .who{font-weight:700;color:var(--green-deep);}
+
+.empty{text-align:center;padding:50px 20px;color:var(--ink-soft);}
+.empty .compass{width:70px;height:70px;opacity:.6;margin-bottom:14px;}
+
+.importbox{padding:16px;margin-bottom:16px;background:var(--card2);}
+.importbox textarea{width:100%;min-height:60px;resize:vertical;padding:10px 12px;border-radius:11px;border:1.5px solid var(--line);background:var(--card);margin-top:8px;}
+
+/* ---------- sticky action bar ---------- */
+.actionbar{position:fixed;left:0;right:0;bottom:0;z-index:30;
+  padding:10px 16px calc(10px + env(safe-area-inset-bottom));
+  background:linear-gradient(transparent, var(--paper) 38%);}
+.actionbar .inner{max-width:var(--maxw);margin:0 auto;display:flex;gap:10px;}
+
+/* ---------- modal / sheet ---------- */
+.sheet-bg{position:fixed;inset:0;z-index:50;background:rgba(30,22,8,.42);display:flex;align-items:flex-end;justify-content:center;
+  animation:fade .2s ease both;}
+.sheet{width:100%;max-width:var(--maxw);background:var(--paper);border-radius:22px 22px 0 0;padding:22px 18px calc(26px + env(safe-area-inset-bottom));
+  box-shadow:0 -10px 40px rgba(0,0,0,.25);animation:rise .28s cubic-bezier(.2,.8,.2,1) both;max-height:88vh;overflow:auto;}
+.sheet h2{font-size:1.5rem;}
+.sheet .grab{width:42px;height:5px;border-radius:3px;background:var(--line-strong);margin:0 auto 16px;}
+.linkbox{margin:14px 0;padding:12px;background:var(--card2);border:1.5px solid var(--line);border-radius:12px;
+  font-family:"Spline Sans Mono",monospace;font-size:.74rem;word-break:break-all;max-height:96px;overflow:auto;color:var(--ink-soft);}
+.sheet .stack{display:flex;flex-direction:column;gap:10px;margin-top:8px;}
+
+/* custom filter sheet */
+.cust-head{display:flex;align-items:center;justify-content:space-between;gap:10px;}
+.cust-scroll{max-height:56vh;overflow:auto;margin:8px -2px 14px;padding:0 2px;}
+.fsec{padding:13px 0;border-top:1px dashed var(--line-strong);}
+.fsec:first-child{border-top:none;padding-top:4px;}
+.fsec h3{font-size:1rem;margin-bottom:9px;}
+.fchips{display:flex;flex-wrap:wrap;gap:7px;}
+.fchip{font-size:.78rem;font-weight:600;padding:7px 12px;border-radius:999px;background:var(--card2);border:1.5px solid var(--line);color:var(--ink-soft);}
+.fchip.on{background:var(--green-soft);border-color:var(--green);color:var(--green-deep);}
+.frange,.frow{display:flex;align-items:center;gap:8px;margin:9px 0;font-size:.9rem;}
+.frange-l{min-width:96px;font-weight:600;color:var(--ink-soft);text-transform:capitalize;}
+.frange .to{color:var(--ink-faint);font-size:.82rem;}
+.fsec select{min-height:40px;border-radius:10px;border:1.5px solid var(--line);background:var(--card);padding:0 10px;font-weight:600;}
+.frow select{flex:1;}
+.fsec .chk{margin-top:10px;}
+
+/* ---------- toast ---------- */
+#toast{position:fixed;left:50%;bottom:96px;transform:translateX(-50%) translateY(20px);z-index:80;
+  background:var(--green-deep);color:#F4EAD6;padding:12px 18px;border-radius:13px;font-weight:600;font-size:.9rem;
+  box-shadow:var(--shadow-lg);opacity:0;transition:opacity .25s, transform .25s;pointer-events:none;max-width:90vw;text-align:center;}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+
+@keyframes rise{from{opacity:0;transform:translateY(14px);}to{opacity:1;transform:translateY(0);}}
+@keyframes fade{from{opacity:0;}to{opacity:1;}}
+.fade-in{animation:rise .35s ease both;}
+
+@media(max-width:380px){
+  .modes{grid-template-columns:1fr;}
+  .namegrid{grid-template-columns:1fr;}
+}
+@media(min-width:620px){
+  .swipe-actions .sa{flex-direction:row;}
+}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="actionbar"></div>
+<div id="toast"></div>
+
+<script>
+"use strict";
+/* =========================================================================
+   THE HUNT — NAME RATER  ·  app logic
+   ========================================================================= */
+
+/* ---- the people who vote (edit this list any time) ---- */
+const PEOPLE = ["Arturo","Cait","Tim","Yvette","Rae"];
+
+/* ---- storage keys ---- */
+const K_VOTER="hunt_voter", K_EVENTS="hunt_events", K_IMPORTED="hunt_imported";
+
+/* ---- runtime state ---- */
+const state = {
+  voter: localStorage.getItem(K_VOTER) || null,
+  events: load(K_EVENTS, []),
+  imported: load(K_IMPORTED, {}),   // voter -> {exportedAt, events}
+  view: "welcome",
+  swipeIdx: 0,
+  duel: null,
+  duelRecent: [],
+  activeId: null,
+  focus: "all",          // which names to work on, and in what order (per rating mode)
+  queueMode: null,       // the mode the current snapshot was built for
+  queueIds: [],          // snapshot of name ids for swipe + list, so items don't shift mid-run
+  custom: defaultCustom(),
+  filters: { search:"", type:"all", hideFlagged:false, sort:"score" },
+};
+
+function load(k, fallback){ try{ return JSON.parse(localStorage.getItem(k)) ?? fallback; }catch(e){ return fallback; } }
+function save(k, v){ localStorage.setItem(k, JSON.stringify(v)); }
+const $ = s => document.querySelector(s);
+const esc = s => String(s==null?"":s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const nowISO = () => new Date().toISOString();
+
+/* ---------------------------------------------------------------
+   EVENT LOG  (append-only — nothing is ever edited or deleted)
+   --------------------------------------------------------------- */
+function addEvent(ev){
+  ev.ts = nowISO();
+  ev.voter = state.voter;
+  state.events.push(ev);
+  save(K_EVENTS, state.events);
+}
+// my latest value for a name in a given mode
+function myLatest(id, mode, axis){
+  for(let i=state.events.length-1;i>=0;i--){
+    const e=state.events[i];
+    if(e.id===id && e.mode===mode && (mode!=="rate" || (e.axis||"overall")===(axis||"overall"))) return e;
+  }
+  return null;
+}
+function myComment(id){ const e=myLatest(id,"comment"); return e?e.text:""; }
+function myStars(id){ const e=myLatest(id,"rate","overall"); return e?e.value:0; }
+function mySwipe(id){ const e=myLatest(id,"swipe"); return e?e.value:null; }
+function myShortlist(id){ const e=myLatest(id,"shortlist"); return e?e.value===true:false; }
+
+/* ---------------------------------------------------------------
+   AGGREGATION across everyone (me + imported voters)
+   --------------------------------------------------------------- */
+function allVoterEvents(){
+  const map = {};
+  if(state.voter) map[state.voter] = state.events;
+  for(const v in state.imported){
+    if(v===state.voter) continue;       // my own local copy always wins for me
+    map[v] = state.imported[v].events || [];
+  }
+  return map;
+}
+function voterList(){ return Object.keys(allVoterEvents()); }
+
+function statsFor(id){
+  const voters = allVoterEvents();
+  const stars=[], swipesNum=[]; let yes=0,maybe=0,no=0, shortlists=0, dWins=0,dLoss=0;
+  const comments=[]; const perVoter={}; const voterSet=new Set();
+  for(const v in voters){
+    const evs=voters[v];
+    let r=null,sw=null,sl=null,vWins=0,vLoss=0; const vcmts=[];
+    for(const e of evs){
+      if(e.mode==="duel"){
+        if(e.winner!=null || e.loser!=null){ if(e.winner===id)vWins++; if(e.loser===id)vLoss++; continue; } // legacy shape
+        if(e.a!==id && e.b!==id) continue;
+        if(e.result==="both") vWins++;
+        else if(e.result==="neither") vLoss++;
+        else if(e.result==="a"){ if(id===e.a)vWins++; else vLoss++; }
+        else if(e.result==="b"){ if(id===e.b)vWins++; else vLoss++; }
+        continue;
+      }
+      if(e.id!==id) continue;
+      if(e.mode==="rate" && (e.axis||"overall")==="overall") r=e.value;
+      else if(e.mode==="swipe") sw=e.value;
+      else if(e.mode==="shortlist") sl=e.value;
+      else if(e.mode==="comment") vcmts.push(e.text);
+    }
+    let touched=false; const pv={};
+    if(r!=null){ stars.push(r); pv.stars=r; touched=true; }
+    if(sw!=null){ swipesNum.push(sw==="yes"?1:sw==="maybe"?.5:0); if(sw==="yes")yes++;else if(sw==="maybe")maybe++;else no++; pv.swipe=sw; touched=true; }
+    if(sl===true){ shortlists++; pv.shortlist=true; touched=true; }
+    if(vcmts.length){ const last=vcmts[vcmts.length-1].trim(); if(last){ comments.push({voter:v,text:last}); pv.comment=last; touched=true; } }
+    dWins+=vWins; dLoss+=vLoss;
+    if(vWins+vLoss>0){ touched=true; pv.duel=(pv.duel||0); }
+    if(touched){ voterSet.add(v); perVoter[v]=pv; }
+  }
+  const starsAvg = stars.length ? stars.reduce((a,b)=>a+b,0)/stars.length : null;
+  const swipeAvg = swipesNum.length ? swipesNum.reduce((a,b)=>a+b,0)/swipesNum.length : null;
+  const duelTotal = dWins+dLoss;
+  const duelRate = duelTotal ? dWins/duelTotal : null;
+  // combined Hunt Score (transparent: stars 50%, swipe 25%, duel 25% of whatever is present)
+  const parts=[];
+  if(starsAvg!=null) parts.push([(starsAvg-1)/4, .5]);
+  if(swipeAvg!=null) parts.push([swipeAvg, .25]);
+  if(duelRate!=null) parts.push([duelRate, .25]);
+  let score=null;
+  if(parts.length){ const wsum=parts.reduce((a,p)=>a+p[1],0); const v=parts.reduce((a,p)=>a+p[0]*p[1],0)/wsum; score=Math.round(v*100); }
+  return { id, starsAvg, starsCount:stars.length, yes,maybe,no, swipeAvg,
+           shortlists, dWins,dLoss,duelTotal,duelRate, comments, perVoter,
+           voters:voterSet.size, score };
+}
+
+/* ---------------------------------------------------------------
+   NAME helpers
+   --------------------------------------------------------------- */
+const byId = {};   // filled in init(), once the NAMES script below has loaded
+const AXES=[["discovery","var(--teal)"],["connection","var(--green)"],["play","var(--coral)"],["travel","var(--gold)"]];
+
+function chipsFor(n){
+  let h="";
+  if(n.type) h+=`<span class="pill type">${esc(n.type)}</span>`;
+  (n.tags||[]).slice(0,3).forEach(t=>h+=`<span class="pill">${esc(t)}</span>`);
+  (n.flags||[]).forEach(f=>h+=`<span class="pill flag">⚑ ${esc(f)}</span>`);
+  return h;
+}
+function axesFor(n){
+  const s=n.scores||{}; if(!AXES.some(a=>s[a[0]]!=null)) return "";
+  let h='<div class="axes">';
+  AXES.forEach(([k,c])=>{ const v=s[k]; if(v==null)return;
+    h+=`<div class="axis"><span>${k[0].toUpperCase()+k.slice(1)}</span><span class="bar"><i style="width:${v/5*100}%;background:${c}"></i></span></div>`;});
+  return h+"</div>";
+}
+
+/* the ALWAYS-VISIBLE comment field, included on every card everywhere */
+function noteField(id){
+  return `<div class="note">
+    <label>✎ Your thoughts <span class="muted tiny" style="font-weight:600;text-transform:none;letter-spacing:0">(saved automatically)</span></label>
+    <textarea class="js-note" data-id="${id}" placeholder="What do you think of this name?">${esc(myComment(id))}</textarea>
+    <span class="saved">✓ saved</span>
+  </div>`;
+}
+function heartBtn(id){
+  return `<button class="heart js-heart ${myShortlist(id)?'on':''}" data-id="${id}" title="Shortlist this name" aria-label="Shortlist">${myShortlist(id)?'★':'☆'}</button>`;
+}
+
+/* =========================================================================
+   RENDER
+   ========================================================================= */
+function render(){
+  const v=state.view;
+  if(v!=="welcome" && !state.voter){ state.view="welcome"; }
+  $("#app").innerHTML = topbar() + ({
+    welcome: viewWelcome, hub: viewHub, swipe: viewSwipe,
+    rate: viewList, comment: viewList, duel: viewDuel, results: viewResults,
+  }[state.view] || viewHub)();
+  $("#actionbar").innerHTML = actionBar();
+  bindNotes();
+  if(state.view==="rate"){
+    const f=filteredNames();
+    if(!state.activeId || !f.some(n=>n.id===state.activeId)) state.activeId = f[0] ? f[0].id : null;
+    if(state.activeId) setActive(state.activeId);
+  }
+  window.scrollTo({top:0,behavior:"auto"});
+}
+
+function topbar(){
+  if(state.view==="welcome") return "";
+  return `<div class="topbar">
+    ${compassSVG(38)}
+    <div class="brand-txt"><span class="kicker">The Hunt</span><span class="ttl">Name Rater</span></div>
+    <div class="spacer"></div>
+    <div class="whoami"><span class="dot"></span>${esc(state.voter)} <button data-action="change-voter">change</button></div>
+  </div>`;
+}
+
+/* ---------- welcome ---------- */
+function viewWelcome(){
+  return `<div class="welcome">
+    ${compassSVG(96,"compass")}
+    <h1>Help us name <em>The&nbsp;Hunt</em></h1>
+    <p class="lede">We've gathered ${NAMES.length} candidate names. Rate the ones you like, skip the ones you don't, and leave a note wherever you have a thought. Takes a few minutes, on your phone.</p>
+    <p class="lede tiny" style="margin-top:18px;font-weight:700;color:var(--green)">First — who are you?</p>
+    <div class="namegrid">
+      ${PEOPLE.map(p=>`<button class="who" data-action="pick-voter" data-name="${esc(p)}">${esc(p)}</button>`).join("")}
+      <button class="who other" data-action="show-other">Someone else…</button>
+    </div>
+    <div class="otherbox hide" id="otherbox">
+      <input id="otherName" placeholder="Type your name" maxlength="24">
+      <button class="btn primary" data-action="pick-other">Start</button>
+    </div>
+  </div>`;
+}
+
+/* ---------- hub ---------- */
+function viewHub(){
+  const total=NAMES.length;
+  const rated=new Set(state.events.filter(e=>e.mode==="rate").map(e=>e.id)).size;
+  const swiped=new Set(state.events.filter(e=>e.mode==="swipe").map(e=>e.id)).size;
+  const noted=new Set(state.events.filter(e=>e.mode==="comment" && (e.text||"").trim()).map(e=>e.id)).size;
+  const duels=state.events.filter(e=>e.mode==="duel").length;
+  const shortl=new Set(NAMES.map(n=>n.id).filter(id=>myShortlist(id))).size;
+  return `<div class="fade-in">
+    <div class="hub-head"><h2>Pick how you'd like to rate</h2></div>
+    <div class="progress-strip">
+      <div class="stat"><div class="n">${swiped}<small>/${total}</small></div><div class="l">Swiped</div></div>
+      <div class="stat"><div class="n">${rated}<small>/${total}</small></div><div class="l">Starred</div></div>
+      <div class="stat"><div class="n">${duels}</div><div class="l">Duels</div></div>
+      <div class="stat"><div class="n">${noted}</div><div class="l">Notes</div></div>
+      <div class="stat"><div class="n">${shortl}</div><div class="l">Shortlist</div></div>
+    </div>
+    <div class="modes">
+      <button class="mode" data-action="go" data-view="swipe">
+        ${iconSwipe()}<div><h3>Swipe</h3><p>Yes / maybe / no, one at a time. The quick first pass.</p></div></button>
+      <button class="mode" data-action="go" data-view="rate">
+        ${iconStar()}<div><h3>Rate</h3><p>Give names 1–5 stars in a scrollable list.</p></div></button>
+      <button class="mode" data-action="go" data-view="duel">
+        ${iconDuel()}<div><h3>Duel</h3><p>This or that? Pick your favourite of two. Great on a call.</p></div></button>
+      <button class="mode" data-action="go" data-view="comment">
+        ${iconNote()}<div><h3>Notes</h3><p>Browse every name and leave your thoughts.</p></div></button>
+      <button class="mode wide results" data-action="go" data-view="results">
+        ${iconTrophy()}<div class="body"><h3>See the leaderboard</h3><p>Combined standings from everyone who's voted so far.</p></div></button>
+    </div>
+    <div class="dashed"></div>
+    <p class="muted tiny">Your votes live only on this device until you tap <b>Send my ratings</b> below. Nothing is uploaded anywhere automatically.</p>
+  </div>`;
+}
+
+/* ---------- swipe ---------- */
+function viewSwipe(){
+  ensureQueue("swipe");
+  const order=state.queueIds.map(id=>byId[id]).filter(Boolean);
+  const head=`<div class="vhead"><a class="back" data-action="go" data-view="hub">‹ Hub</a><h2>Swipe</h2></div>${focusBar("swipe")}`;
+  if(order.length===0){
+    return `${head}<div class="empty">${compassSVG(70,"compass")}<h3 style="font-size:1.4rem">Nothing here</h3>
+      <p>No names match this focus. Try a different Focus above.</p></div>`;
+  }
+  if(state.swipeIdx>=order.length){
+    return `${head}<div class="empty">${compassSVG(70,"compass")}<h3 style="font-size:1.4rem">That's all ${order.length}!</h3>
+      <p>You've swiped through this list. Switch Focus, jump into another mode, or send your ratings.</p>
+      <div class="row" style="justify-content:center;margin-top:16px"><button class="btn primary" data-action="go" data-view="results">See leaderboard</button>
+      <button class="btn ghost" data-action="restart-swipe">Swipe again</button></div></div>`;
+  }
+  const n=order[state.swipeIdx];
+  const pct=Math.round(state.swipeIdx/order.length*100);
+  const prev=mySwipe(n.id);
+  return `<div class="swipe-stage fade-in">
+    <div class="vhead"><a class="back" data-action="go" data-view="hub">‹ Hub</a><h2>Swipe</h2></div>
+    ${focusBar("swipe")}
+    <div class="hint-bar"><span class="h lead">Keys:</span>
+      <span class="h"><span class="kbd">←</span> no</span>
+      <span class="h"><span class="kbd">↑</span> maybe</span>
+      <span class="h"><span class="kbd">→</span> yes</span>
+    </div>
+    <div class="progressbar"><i style="width:${pct}%"></i></div>
+    <div class="swipe-meta"><span>${state.swipeIdx+1} of ${order.length}</span>${prev?`<span>you said: <b>${prev}</b></span>`:"<span></span>"}</div>
+    <div class="card namecard swipe-card" style="margin-top:10px">
+      <div class="nc-top">
+        <div style="flex:1"><div class="nc-id mono">${n.id}</div>
+          <div class="nc-name">${esc(n.name)}</div>
+          ${n.variants&&n.variants.length?`<div class="nc-variants">also: ${n.variants.map(esc).join(" · ")}</div>`:""}
+        </div>${heartBtn(n.id)}
+      </div>
+      <div class="nc-meaning">${esc(n.meaning||"")}</div>
+      <div class="nc-chips">${chipsFor(n)}</div>
+      ${axesFor(n)}
+      ${noteField(n.id)}
+      <div class="swipe-actions">
+        <button class="btn sa no" data-action="swipe" data-id="${n.id}" data-val="no"><span class="em">✕</span>No <span class="kbd">←</span></button>
+        <button class="btn sa maybe" data-action="swipe" data-id="${n.id}" data-val="maybe"><span class="em">~</span>Maybe <span class="kbd">↑</span></button>
+        <button class="btn sa yes" data-action="swipe" data-id="${n.id}" data-val="yes"><span class="em">✓</span>Yes <span class="kbd">→</span></button>
+      </div>
+    </div>
+    <div class="duel-skip"><button class="btn ghost sm" data-action="swipe-back" ${state.swipeIdx===0?"disabled style=opacity:.4":""}>‹ Previous</button></div>
+  </div>`;
+}
+
+/* ---------- list (rate + notes share this) ---------- */
+function viewList(){
+  const isRate=state.view==="rate";
+  const list=filteredNames();
+  return `<div class="fade-in">
+    <div class="vhead"><a class="back" data-action="go" data-view="hub">‹ Hub</a><h2>${isRate?"Rate":"Notes"}</h2></div>
+    <p class="subhead">${isRate?"Tap stars to score. Leave a note on any card too.":"Leave your thoughts on any name. Add stars if you like."}</p>
+    ${isRate?`<div class="hint-bar"><span class="h lead">Keys:</span>
+      <span class="h"><span class="kbd">1</span>–<span class="kbd">5</span> rate the highlighted card</span>
+      <span class="h"><span class="kbd">F</span> shortlist</span>
+      <span class="h"><span class="kbd">↑</span><span class="kbd">↓</span> move</span>
+    </div>`:""}
+    ${focusBar(state.view)}
+    <div class="toolbar">
+      <input class="search" id="listSearch" placeholder="Search ${NAMES.length} names…" value="${esc(state.filters.search)}" data-action="filter-search">
+    </div>
+    ${list.length?list.map(n=>nameCardList(n,isRate)).join(""):`<div class="empty">Nothing matches this focus or search. Try changing Focus above.</div>`}
+  </div>`;
+}
+function nameCardList(n, withStars){
+  const stars=myStars(n.id);
+  const active = withStars && n.id===state.activeId ? " active" : "";
+  return `<div class="card namecard${active}" data-card="${n.id}">
+    <div class="nc-top">
+      <div style="flex:1"><div class="nc-id mono">${n.id}</div>
+        <div class="nc-name">${esc(n.name)}</div>
+        ${n.variants&&n.variants.length?`<div class="nc-variants">also: ${n.variants.map(esc).join(" · ")}</div>`:""}
+      </div>${heartBtn(n.id)}
+    </div>
+    <div class="nc-meaning">${esc(n.meaning||"")}</div>
+    <div class="nc-chips">${chipsFor(n)}</div>
+    ${withStars?`<div class="snums">${[1,2,3,4,5].map(i=>`<span>${i}</span>`).join("")}</div>
+      <div class="stars js-stars" data-id="${n.id}">
+        ${[1,2,3,4,5].map(i=>`<button class="star ${i<=stars?'on':''}" data-action="star" data-id="${n.id}" data-val="${i}">★</button>`).join("")}
+        <span class="starlabel">${stars?stars+"/5":"tap or press 1–5"}</span>
+      </div>`:""}
+    ${noteField(n.id)}
+  </div>`;
+}
+
+/* ---------- duel ---------- */
+function newDuel(){
+  const pool=workingList("duel");
+  if(pool.length<2){ state.duel=null; return; }
+  let a,b,guard=0;
+  do{ a=pool[Math.floor(Math.random()*pool.length)]; b=pool[Math.floor(Math.random()*pool.length)]; guard++; }
+  while((a.id===b.id || state.duelRecent.includes(a.id+"|"+b.id) || state.duelRecent.includes(b.id+"|"+a.id)) && guard<60);
+  state.duel=[a,b];
+}
+function duelCardHTML(n,result,arrow){
+  return `<div class="card duel-card" data-card="${n.id}">
+    <div class="nc-top"><div style="flex:1"><div class="nc-id mono">${n.id}</div><div class="nc-name">${esc(n.name)}</div></div>${heartBtn(n.id)}</div>
+    <div class="nc-meaning tiny">${esc(n.meaning||"")}</div>
+    ${noteField(n.id)}
+    <button class="btn primary block duel-pick" data-action="duel-result" data-result="${result}">Pick ${esc(n.name)} <span class="kbd">${arrow}</span></button>
+  </div>`;
+}
+function viewDuel(){
+  if(!state.duel) newDuel();
+  const head=`<div class="vhead"><a class="back" data-action="go" data-view="hub">‹ Hub</a><h2>Duel</h2></div>${focusBar("duel")}`;
+  if(!state.duel){
+    return `<div class="duel-wrap fade-in">${head}
+      <div class="empty">${compassSVG(70,"compass")}<h3 style="font-size:1.4rem">Need two names</h3>
+      <p>This focus has fewer than two names to compare. Try a different Focus above.</p></div></div>`;
+  }
+  const [a,b]=state.duel;
+  const done=state.events.filter(e=>e.mode==="duel").length;
+  return `<div class="duel-wrap fade-in">
+    ${head}
+    <p class="subhead">Which name do you prefer? ${done?`<b>${done}</b> picked so far.`:""}</p>
+    <div class="hint-bar"><span class="h lead">Keys:</span>
+      <span class="h"><span class="kbd">←</span> left</span>
+      <span class="h"><span class="kbd">→</span> right</span>
+      <span class="h"><span class="kbd">↑</span> both</span>
+      <span class="h"><span class="kbd">↓</span> neither</span>
+      <span class="h"><span class="kbd">S</span> skip</span>
+    </div>
+    <div class="duel-grid">
+      ${duelCardHTML(a,"a","←")}<div class="vs"><span>or</span></div>${duelCardHTML(b,"b","→")}
+    </div>
+    <div class="duel-extra">
+      <button class="btn ghost both" data-action="duel-result" data-result="both">👍 Both <span class="kbd">↑</span></button>
+      <button class="btn ghost neither" data-action="duel-result" data-result="neither">👎 Neither <span class="kbd">↓</span></button>
+    </div>
+    <div class="duel-skip"><button class="btn ghost sm" data-action="duel-skip">Skip this pair <span class="kbd">S</span> ›</button></div>
+  </div>`;
+}
+
+/* ---------- results ---------- */
+function viewResults(){
+  const voters=voterList();
+  let rows=NAMES.map(n=>({n, s:statsFor(n.id)}));
+  // filter
+  const q=state.filters.search.toLowerCase();
+  rows=rows.filter(({n})=>{
+    if(state.filters.hideFlagged && (n.flags||[]).length) return false;
+    if(state.filters.type!=="all" && n.type!==state.filters.type) return false;
+    if(q && !(n.name.toLowerCase().includes(q) || (n.meaning||"").toLowerCase().includes(q) || n.id.includes(q))) return false;
+    return true;
+  });
+  // sort
+  const sortFn={
+    score:(a,b)=>(b.s.score??-1)-(a.s.score??-1) || b.s.voters-a.s.voters,
+    stars:(a,b)=>(b.s.starsAvg??-1)-(a.s.starsAvg??-1),
+    yes:(a,b)=>b.s.yes-a.s.yes,
+    duel:(a,b)=>(b.s.duelRate??-1)-(a.s.duelRate??-1) || b.s.dWins-a.s.dWins,
+    shortlist:(a,b)=>b.s.shortlists-a.s.shortlists,
+    alpha:(a,b)=>a.n.name.localeCompare(b.n.name),
+  }[state.filters.sort];
+  rows.sort(sortFn);
+
+  const hasVotes=voters.length>0 && NAMES.some(n=>statsFor(n.id).voters>0);
+  const types=["all","descriptive","suggestive","coined","eponymous"];
+  let head=`<div class="fade-in">
+    <div class="vhead"><a class="back" data-action="go" data-view="hub">‹ Hub</a><h2>Leaderboard</h2></div>
+    <p class="subhead">Voting as <b>${esc(state.voter)}</b>. Counting <b>${voters.length||1}</b> ${voters.length===1?"person":"people"}: ${voters.map(esc).join(", ")||"just you"}.</p>
+    <div class="card importbox">
+      <div class="row wrap" style="justify-content:space-between">
+        <div><b>Got results from someone?</b><div class="tiny muted">Paste the link they sent you, or load their file.</div></div>
+        <label class="btn ghost sm">Load file<input type="file" accept=".json,application/json" data-action="load-file" style="display:none"></label>
+      </div>
+      <textarea id="pasteBox" placeholder="Paste a 'Send my ratings' link here…"></textarea>
+      <button class="btn primary sm block" data-action="import-link" style="margin-top:8px">Add their ratings</button>
+    </div>
+    <div class="toolbar">
+      <input class="search" placeholder="Search names…" value="${esc(state.filters.search)}" data-action="filter-search">
+      <select data-action="filter-sort">
+        ${[["score","Sort: Hunt Score"],["stars","Sort: Stars"],["yes","Sort: Most yes"],["duel","Sort: Duel win-rate"],["shortlist","Sort: Shortlisted"],["alpha","Sort: A–Z"]]
+          .map(([v,l])=>`<option value="${v}" ${state.filters.sort===v?"selected":""}>${l}</option>`).join("")}
+      </select>
+      <label class="chk"><input type="checkbox" data-action="filter-flag" ${state.filters.hideFlagged?"checked":""}>Hide flagged</label>
+    </div>`;
+
+  if(!hasVotes){
+    head+=`<div class="empty">${compassSVG(70,"compass")}<h3 style="font-size:1.35rem">No votes yet</h3>
+      <p>Rate some names, or add someone's results above, and the leaderboard fills in.</p></div></div>`;
+    return head;
+  }
+  const body=rows.map(({n,s},i)=>lbRow(n,s,i)).join("");
+  const foot=`<div class="dashed"></div>
+    <div class="row wrap" style="gap:10px">
+      <button class="btn ghost sm" data-action="how-scoring">ⓘ How the score works</button>
+      <button class="btn ghost sm" data-action="export-merged">⤓ Export combined results</button>
+      <button class="btn ghost sm" data-action="export-summary">⤓ Summary for Claude</button>
+    </div></div>`;
+  return head+body+foot;
+}
+function lbRow(n,s,i){
+  const rank=i+1;
+  const m=[];
+  if(s.starsCount) m.push(`<span class="metric">★ <b>${s.starsAvg.toFixed(1)}</b> (${s.starsCount})</span>`);
+  if(s.yes+s.maybe+s.no) m.push(`<span class="metric"><b style="color:var(--yes)">${s.yes}</b>·<b style="color:var(--maybe)">${s.maybe}</b>·<b style="color:var(--no)">${s.no}</b> y/m/n</span>`);
+  if(s.duelTotal) m.push(`<span class="metric">⚔ <b>${Math.round(s.duelRate*100)}%</b> (${s.dWins}-${s.dLoss})</span>`);
+  if(s.shortlists) m.push(`<span class="metric">★shortlist <b>${s.shortlists}</b></span>`);
+  const voterBits = Object.entries(s.perVoter).map(([v,pv])=>{
+    const bits=[]; if(pv.stars)bits.push(pv.stars+"★"); if(pv.swipe)bits.push(pv.swipe); if(pv.shortlist)bits.push("shortlisted");
+    return `<span class="who">${esc(v)}</span> ${bits.join(", ")||"voted"}`;
+  }).join(" &nbsp;·&nbsp; ");
+  return `<div class="card lb-row" data-lb="${n.id}">
+    <button class="lb-head" data-action="toggle-lb" data-id="${n.id}" aria-expanded="false">
+      <div class="rank ${rank<=3?'top':''}">${rank}</div>
+      <div class="lb-name"><div class="nm">${esc(n.name)}</div><div class="sub mono">${n.id} · ${esc(n.type||"")} · ${s.voters} ${s.voters===1?"voter":"voters"}</div></div>
+      <div class="scorebadge ${s.score==null?'none':''}"><div class="v">${s.score==null?"–":s.score}</div><div class="l">Hunt</div></div>
+      <span class="chev">▾</span>
+    </button>
+    <div class="lb-metrics">${m.join("")||'<span class="metric muted">no votes yet</span>'}</div>
+    <div class="lb-detail">
+      ${n.meaning?`<p class="lb-meaning">${esc(n.meaning)}</p>`:""}
+      ${n.variants&&n.variants.length?`<p class="tiny muted" style="margin:0 0 8px">Also: ${n.variants.map(esc).join(" · ")}</p>`:""}
+      <div class="nc-chips">${chipsFor(n)}</div>
+      ${axesFor(n)}
+      <div class="lb-block"><h4>Comments</h4>
+        ${s.comments.length?s.comments.map(c=>`<div class="cmt"><span class="who">${esc(c.voter)}:</span> ${esc(c.text)}</div>`).join(""):'<div class="muted tiny">No written notes yet.</div>'}
+      </div>
+      <div class="lb-block"><h4>Who voted</h4>
+        <div class="tiny muted">${voterBits||"Nobody yet."}</div>
+      </div>
+    </div>
+  </div>`;
+}
+
+/* ---------- sticky action bar ---------- */
+function actionBar(){
+  if(state.view==="welcome") return "";
+  const right = state.view==="results"
+    ? `<button class="btn ghost block" data-action="go" data-view="hub">‹ Back to modes</button>`
+    : `<button class="btn ghost block" data-action="go" data-view="results">Leaderboard</button>`;
+  return `<div class="actionbar"><div class="inner">
+    ${right}
+    <button class="btn coral block" data-action="open-share">✈ Send my ratings</button>
+  </div></div>`;
+}
+
+/* =========================================================================
+   FOCUS — choose which names to work on, and in what order, per mode
+   ========================================================================= */
+const FOCUS_OPTS=[
+  ["all", ()=>"All names"],
+  ["untouched", m=>({swipe:"Not yet swiped",rate:"Not yet rated",comment:"Not yet noted",duel:"Not yet dueled"}[m]||"Not done yet")],
+  ["top", ()=>"Top-voted first"],
+  ["bottom", ()=>"Lowest-voted first"],
+  ["high", ()=>"High scorers (70+)"],
+  ["needsvotes", ()=>"No votes yet (anyone)"],
+  ["shortlist", ()=>"My shortlist ★"],
+  ["custom", ()=>"Custom filter…"],
+];
+// have I acted on this name in this mode?
+function touchedInMode(id, mode){
+  if(mode==="swipe") return mySwipe(id)!=null;
+  if(mode==="rate") return myStars(id)>0;
+  if(mode==="comment") return myComment(id).trim()!=="";
+  if(mode==="duel") return state.events.some(e=>e.mode==="duel" && (e.a===id||e.b===id||e.winner===id||e.loser===id));
+  return false;
+}
+// the ordered, filtered set of names for the current focus + mode
+function workingList(mode){
+  let list = NAMES.slice();
+  if(state.filters.hideFlagged) list = list.filter(n=>!(n.flags||[]).length);
+  const f=state.focus, st={};
+  list.forEach(n=>{ st[n.id]=statsFor(n.id); });
+  if(f==="untouched")      list = list.filter(n=>!touchedInMode(n.id,mode));
+  else if(f==="needsvotes") list = list.filter(n=>st[n.id].voters===0);
+  else if(f==="high")       list = list.filter(n=>(st[n.id].score??-1)>=70);
+  else if(f==="shortlist")  list = list.filter(n=>myShortlist(n.id));
+  else if(f==="custom")     list = list.filter(n=>matchCustom(n, st[n.id]));
+  if(f==="top" || f==="high") list.sort((a,b)=>(st[b.id].score??-1)-(st[a.id].score??-1));
+  else if(f==="bottom")       list.sort((a,b)=>(st[a.id].score??Infinity)-(st[b.id].score??Infinity));
+  else if(f==="custom"){
+    const sc=state.custom.sort;
+    if(sc==="top")        list.sort((a,b)=>(st[b.id].score??-1)-(st[a.id].score??-1));
+    else if(sc==="bottom")list.sort((a,b)=>(st[a.id].score??Infinity)-(st[b.id].score??Infinity));
+    else if(sc==="stars") list.sort((a,b)=>(st[b.id].starsAvg??-1)-(st[a.id].starsAvg??-1));
+    else if(sc==="alpha") list.sort((a,b)=>a.name.localeCompare(b.name));
+  }
+  return list;
+}
+/* the custom-filter predicate: every field exposed, range or value */
+function matchCustom(n, s){
+  const c=state.custom;
+  if(c.types.length && !c.types.includes(n.type)) return false;
+  if(c.statuses.length && !c.statuses.includes(n.status)) return false;
+  if(c.tags.length && !(n.tags||[]).some(t=>c.tags.includes(t))) return false;
+  if(c.flags==="none" && (n.flags||[]).length) return false;
+  if(c.flags==="only" && !(n.flags||[]).length) return false;
+  for(const ax of ["discovery","connection","play","travel"]){
+    const mn=c.scoreMin[ax], mx=c.scoreMax[ax];
+    if(mn<=0 && mx>=5) continue;                       // axis left at full range = ignore it
+    const v=(n.scores||{})[ax];
+    if(v==null){ if(!c.includeUnscored) return false; continue; }
+    if(v<mn || v>mx) return false;
+  }
+  if(!c.includeNoScore && s.score==null) return false; // "include no score" off = drop unscored
+  if((c.huntMin>0 || c.huntMax<100) && s.score!=null && (s.score<c.huntMin || s.score>c.huntMax)) return false;
+  if(c.requireStars && s.starsAvg==null) return false;
+  if(s.starsAvg!=null && (s.starsAvg<c.starsMin || s.starsAvg>c.starsMax)) return false;
+  if(s.voters<c.votersMin) return false;
+  const ms=mySwipe(n.id);
+  if(c.mySwipe==="none"){ if(ms!=null) return false; }
+  else if(c.mySwipe!=="any" && ms!==c.mySwipe) return false;
+  if(c.myStarsMin>0 && myStars(n.id)<c.myStarsMin) return false;
+  if(c.myShortlist==="yes" && !myShortlist(n.id)) return false;
+  if(c.myShortlist==="no" && myShortlist(n.id)) return false;
+  if(c.myCommented==="yes" && !myComment(n.id).trim()) return false;
+  if(c.myCommented==="no" && myComment(n.id).trim()) return false;
+  return true;
+}
+function defaultCustom(){ return {
+  types:[], statuses:[], tags:[], flags:"any",
+  scoreMin:{discovery:0,connection:0,play:0,travel:0},
+  scoreMax:{discovery:5,connection:5,play:5,travel:5},
+  includeUnscored:true,
+  huntMin:0, huntMax:100, includeNoScore:true,
+  starsMin:1, starsMax:5, requireStars:false,
+  votersMin:0,
+  mySwipe:"any", myStarsMin:0, myShortlist:"any", myCommented:"any",
+  sort:"id"
+};}
+function getPath(o,k){ return k.split(".").reduce((a,p)=>a==null?a:a[p],o); }
+function setPath(o,k,v){ const ps=k.split("."); const last=ps.pop(); let t=o; for(const p of ps) t=t[p]; t[last]=v; }
+function parseMaybeNum(v){ return /^-?\d+$/.test(v)?Number(v):v; }
+function customCount(){ const keep=state.focus; state.focus="custom"; const n=workingList("rate").length; state.focus=keep; return n; }
+function buildQueue(mode){ state.queueIds = workingList(mode).map(n=>n.id); state.queueMode=mode; state.swipeIdx=0; state.activeId=null; }
+function ensureQueue(mode){ if(state.queueMode!==mode) buildQueue(mode); }
+
+// list of names for the current list view (queue snapshot + live search)
+function filteredNames(){
+  ensureQueue(state.view);
+  const q=state.filters.search.toLowerCase();
+  let list = state.queueIds.map(id=>byId[id]).filter(Boolean);
+  if(q) list = list.filter(n=>n.name.toLowerCase().includes(q) || (n.meaning||"").toLowerCase().includes(q) || n.id.includes(q));
+  return list;
+}
+
+// the focus toolbar shown at the top of every rating mode
+function focusBar(mode){
+  const count = mode==="duel" ? workingList("duel").length
+              : (state.queueMode===mode ? state.queueIds.length : workingList(mode).length);
+  return `<div class="toolbar focusbar">
+    <select data-action="set-focus" aria-label="Focus">
+      ${FOCUS_OPTS.map(([v,l])=>`<option value="${v}" ${state.focus===v?"selected":""}>Focus: ${l(mode)}</option>`).join("")}
+    </select>
+    ${state.focus==="custom"?`<button class="btn ghost sm" data-action="open-custom">Edit filter ✎</button>`
+      :`<label class="chk"><input type="checkbox" data-action="filter-flag" ${state.filters.hideFlagged?"checked":""}>Hide flagged</label>`}
+    <span class="focus-count">${count} ${count===1?"name":"names"}</span>
+  </div>`;
+}
+
+/* ---------- custom filter sheet (exposes every field) ---------- */
+function openCustom(){ closeSheet(); sheet(customSheet()); }
+function updateCustCount(){
+  const c=customCount();
+  const a=document.getElementById("custCount"); if(a) a.textContent=c+(c===1?" name":" names");
+  const b=document.querySelector('[data-action="apply-custom"]'); if(b) b.textContent="Apply filter ("+c+")";
+}
+function customSheet(){
+  const c=state.custom;
+  const allTags=[...new Set(NAMES.flatMap(n=>n.tags||[]))].sort();
+  const types=["descriptive","suggestive","coined","eponymous"];
+  const statuses=["idea","shortlist","rejected"];
+  const cnt=customCount();
+  const sel=(k,lo,hi,step=1)=>{ let o=""; for(let i=lo;i<=hi;i+=step) o+=`<option value="${i}" ${getPath(c,k)==i?"selected":""}>${i}</option>`; return `<select data-action="cust-set" data-k="${k}">${o}</select>`; };
+  const opt=(k,opts)=>`<select data-action="cust-set" data-k="${k}">${opts.map(([v,l])=>`<option value="${v}" ${String(getPath(c,k))===String(v)?"selected":""}>${l}</option>`).join("")}</select>`;
+  const chip=(arr,val)=>`<button class="fchip ${c[arr].includes(val)?"on":""}" data-action="cust-toggle" data-arr="${arr}" data-val="${esc(val)}">${esc(val)}</button>`;
+  const bool=(k,label)=>`<label class="chk"><input type="checkbox" data-action="cust-bool" data-k="${k}" ${getPath(c,k)?"checked":""}>${label}</label>`;
+  return `<div class="grab"></div>
+    <div class="cust-head"><h2>Custom filter</h2><span class="focus-count" id="custCount">${cnt} ${cnt===1?"name":"names"}</span></div>
+    <p class="muted tiny" style="margin:0 0 6px">Leave a section untouched to ignore it. Everything combines (AND).</p>
+    <div class="cust-scroll">
+      <div class="fsec"><h3>Name type</h3><div class="fchips">${types.map(t=>chip("types",t)).join("")}</div></div>
+      <div class="fsec"><h3>Status</h3><div class="fchips">${statuses.map(t=>chip("statuses",t)).join("")}</div></div>
+      <div class="fsec"><h3>Flags</h3><div class="frow">${opt("flags",[["any","Any"],["none","Only un-flagged"],["only","Only flagged"]])}</div></div>
+      <div class="fsec"><h3>Tags <span class="muted tiny">(match any selected)</span></h3><div class="fchips">${allTags.map(t=>chip("tags",t)).join("")}</div></div>
+      <div class="fsec"><h3>Brand scores <span class="muted tiny">(0–5 each)</span></h3>
+        ${["discovery","connection","play","travel"].map(ax=>`<div class="frange"><span class="frange-l">${ax}</span>${sel("scoreMin."+ax,0,5)}<span class="to">to</span>${sel("scoreMax."+ax,0,5)}</div>`).join("")}
+        ${bool("includeUnscored","Include names not yet scored")}
+      </div>
+      <div class="fsec"><h3>Leaderboard <span class="muted tiny">(everyone's votes)</span></h3>
+        <div class="frange"><span class="frange-l">Hunt score</span>${sel("huntMin",0,100,10)}<span class="to">to</span>${sel("huntMax",0,100,10)}</div>
+        ${bool("includeNoScore","Include names with no score yet")}
+        <div class="frange"><span class="frange-l">Avg stars</span>${sel("starsMin",1,5)}<span class="to">to</span>${sel("starsMax",1,5)}</div>
+        ${bool("requireStars","Only names that have star ratings")}
+        <div class="frange"><span class="frange-l">Min voters</span>${sel("votersMin",0,8)}</div>
+      </div>
+      <div class="fsec"><h3>My own votes</h3>
+        <div class="frow"><span class="frange-l">My swipe</span>${opt("mySwipe",[["any","Any"],["yes","Yes"],["maybe","Maybe"],["no","No"],["none","Not swiped"]])}</div>
+        <div class="frow"><span class="frange-l">My stars ≥</span>${opt("myStarsMin",[["0","Any"],["1","1"],["2","2"],["3","3"],["4","4"],["5","5"]])}</div>
+        <div class="frow"><span class="frange-l">My shortlist</span>${opt("myShortlist",[["any","Any"],["yes","Only mine"],["no","Exclude mine"]])}</div>
+        <div class="frow"><span class="frange-l">My note</span>${opt("myCommented",[["any","Any"],["yes","Has my note"],["no","No note"]])}</div>
+      </div>
+      <div class="fsec"><h3>Sort</h3><div class="frow">${opt("sort",[["id","List order"],["top","Hunt score: high → low"],["bottom","Hunt score: low → high"],["stars","Stars: high → low"],["alpha","A → Z"]])}</div></div>
+    </div>
+    <div class="stack">
+      <button class="btn primary block" data-action="apply-custom">Apply filter (${cnt})</button>
+      <button class="btn ghost block" data-action="reset-custom">Reset all</button>
+    </div>`;
+}
+
+/* =========================================================================
+   ACTIONS
+   ========================================================================= */
+document.addEventListener("click", e=>{
+  const t=e.target.closest("[data-action]");
+  if(!t) return;
+  const a=t.dataset.action;
+  switch(a){
+    case "show-other": $("#otherbox").classList.remove("hide"); $("#otherName").focus(); break;
+    case "pick-voter": setVoter(t.dataset.name); break;
+    case "pick-other": { const v=($("#otherName").value||"").trim(); if(v) setVoter(v); else toast("Type your name first"); break; }
+    case "change-voter": changeVoter(); break;
+    case "go": flushNotes(); state.view=t.dataset.view;
+      if(["swipe","rate","comment","duel"].includes(state.view)) buildQueue(state.view);
+      if(state.view==="duel"){ state.duel=null; }
+      render(); break;
+    case "swipe": doSwipe(t.dataset.id, t.dataset.val); break;
+    case "swipe-back": flushNotes(); if(state.swipeIdx>0){state.swipeIdx--; render();} break;
+    case "restart-swipe": state.swipeIdx=0; render(); break;
+    case "star": doStar(t.dataset.id, +t.dataset.val); break;
+    case "heart": doHeart(t.dataset.id, t); break;
+    case "duel-result": doDuel(t.dataset.result); break;
+    case "duel-skip": flushNotes(); newDuel(); render(); break;
+    case "toggle-lb": { const card=t.closest(".lb-row"); if(card){ const o=card.classList.toggle("open"); t.setAttribute("aria-expanded", o?"true":"false"); } break; }
+    case "open-share": openShare(); break;
+    case "close-sheet": closeSheet(); break;
+    case "copy-link": copyLink(); break;
+    case "share-whatsapp": shareWhatsApp(); break;
+    case "download-mine": downloadMine(); break;
+    case "import-link": importFromPaste(); break;
+    case "load-file": break; // handled by change
+    case "export-merged": exportMerged(); break;
+    case "export-summary": exportSummary(); break;
+    case "how-scoring": showScoring(); break;
+    case "open-custom": openCustom(); break;
+    case "apply-custom": closeSheet(); refreshAfterFilter(); break;
+    case "reset-custom": state.custom=defaultCustom(); openCustom(); break;
+    case "cust-toggle": {
+      const arr=t.dataset.arr, val=t.dataset.val, i=state.custom[arr].indexOf(val);
+      if(i>=0) state.custom[arr].splice(i,1); else state.custom[arr].push(val);
+      t.classList.toggle("on"); updateCustCount(); break;
+    }
+    case "filter-flag": break; // change
+    default: break;
+  }
+});
+
+/* search / select / checkbox / file via input+change */
+document.addEventListener("input", e=>{
+  const t=e.target;
+  if(t.dataset.action==="filter-search"){ state.filters.search=t.value; debounceRerender(t); }
+});
+document.addEventListener("change", e=>{
+  const t=e.target;
+  if(t.dataset.action==="filter-flag"){ state.filters.hideFlagged=t.checked; refreshAfterFilter(); }
+  else if(t.dataset.action==="set-focus"){ state.focus=t.value; refreshAfterFilter(); if(t.value==="custom") openCustom(); }
+  else if(t.dataset.action==="cust-set"){ setPath(state.custom,t.dataset.k,parseMaybeNum(t.value)); updateCustCount(); }
+  else if(t.dataset.action==="cust-bool"){ setPath(state.custom,t.dataset.k,t.checked); updateCustCount(); }
+  else if(t.dataset.action==="filter-sort"){ state.filters.sort=t.value; render(); }
+  else if(t.dataset.action==="load-file"){ loadFile(t.files[0]); }
+});
+function refreshAfterFilter(){
+  if(["swipe","rate","comment","duel"].includes(state.view)){ buildQueue(state.view); if(state.view==="duel") state.duel=null; }
+  render();
+}
+
+let dbTimer=null, dbScroll=0;
+function debounceRerender(input){
+  dbScroll=window.scrollY;
+  clearTimeout(dbTimer);
+  dbTimer=setTimeout(()=>{ const pos=input.selectionStart; render();
+    const ns=document.querySelector('[data-action="filter-search"]'); if(ns){ns.focus(); try{ns.setSelectionRange(pos,pos);}catch(_){} window.scrollTo(0,dbScroll);} },220);
+}
+
+/* ----- comment fields: save without re-render (so focus is never lost) ----- */
+function bindNotes(){
+  document.querySelectorAll(".js-note").forEach(ta=>{
+    let saveT=null;
+    const flush=()=>{ const id=ta.dataset.id; const val=ta.value.trim();
+      if(val!==myComment(id).trim()){ addEvent({mode:"comment", id, text:val}); flashSaved(ta); refreshHubBadgeSoon(); } };
+    ta.addEventListener("input", ()=>{ clearTimeout(saveT); saveT=setTimeout(flush,800); });
+    ta.addEventListener("blur", ()=>{ clearTimeout(saveT); flush(); });
+  });
+}
+function flushNotes(){ document.querySelectorAll(".js-note").forEach(ta=>{
+  const id=ta.dataset.id, val=ta.value.trim();
+  if(val!==myComment(id).trim()) addEvent({mode:"comment", id, text:val});
+}); }
+function flashSaved(ta){ const s=ta.parentElement.querySelector(".saved"); if(s){ s.classList.add("show"); setTimeout(()=>s.classList.remove("show"),1400);} }
+let hubT=null; function refreshHubBadgeSoon(){}
+
+/* ----- swipe ----- */
+function doSwipe(id,val){
+  saveNoteForCard(id);
+  addEvent({mode:"swipe", id, value:val});
+  state.swipeIdx++;
+  toast(val==="yes"?"Yes! ✓":val==="maybe"?"Noted ~":"Skipped ✕");
+  render();
+}
+/* ----- stars (in place, no re-render) ----- */
+function doStar(id,val){
+  const cur=myStars(id);
+  const newVal = (cur===val)?0:val;
+  addEvent({mode:"rate", axis:"overall", id, value:newVal});
+  const wrap=document.querySelector(`.js-stars[data-id="${id}"]`);
+  if(wrap){ wrap.querySelectorAll(".star").forEach((b,i)=>b.classList.toggle("on", (i+1)<=newVal));
+    const lbl=wrap.querySelector(".starlabel"); if(lbl) lbl.textContent=newVal?newVal+"/5":"tap to rate"; }
+}
+/* ----- heart (in place) ----- */
+function doHeart(id,btn){
+  const newVal=!myShortlist(id);
+  addEvent({mode:"shortlist", id, value:newVal});
+  btn.classList.toggle("on", newVal); btn.textContent=newVal?"★":"☆";
+}
+/* ----- rate: keyboard target card ----- */
+function setActive(id){
+  state.activeId=id;
+  document.querySelectorAll(".namecard.active").forEach(c=>c.classList.remove("active"));
+  const c=document.querySelector(`.namecard[data-card="${id}"]`); if(c) c.classList.add("active");
+}
+function moveActive(dir){
+  const ids=filteredNames().map(n=>n.id);
+  let i=ids.indexOf(state.activeId); if(i<0) i=0;
+  i=Math.max(0,Math.min(ids.length-1,i+dir));
+  setActive(ids[i]);
+  const c=document.querySelector(`.namecard[data-card="${ids[i]}"]`);
+  if(c) c.scrollIntoView({block:"center",behavior:"smooth"});
+}
+document.addEventListener("pointerdown", e=>{
+  if(state.view!=="rate") return;
+  const card=e.target.closest("[data-card]");
+  if(card && card.dataset.card!==state.activeId) setActive(card.dataset.card);
+});
+
+/* ----- duel ----- */
+function doDuel(result){
+  if(!state.duel) return;
+  const [a,b]=state.duel;
+  saveNoteForCard(a.id); saveNoteForCard(b.id);
+  addEvent({mode:"duel", a:a.id, b:b.id, result});
+  state.duelRecent.push(a.id+"|"+b.id); if(state.duelRecent.length>12) state.duelRecent.shift();
+  toast(result==="both"?"Both 👍":result==="neither"?"Neither 👎":"Picked "+esc(byId[result==="a"?a.id:b.id].name));
+  newDuel(); render();
+}
+function saveNoteForCard(id){ const ta=document.querySelector(`.js-note[data-id="${id}"]`); if(!ta) return;
+  const val=ta.value.trim(); if(val!==myComment(id).trim()) addEvent({mode:"comment", id, text:val}); }
+
+/* ----- identity ----- */
+function setVoter(name){ state.voter=name; save(K_VOTER,name); state.view="hub"; render(); toast("Hi "+esc(name)+"! 👋"); }
+function changeVoter(){ flushNotes(); state.view="welcome"; render(); }
+
+/* =========================================================================
+   SHARE  (built-in gzip compression → link)
+   ========================================================================= */
+function b64urlEncode(bytes){ let s=""; for(const b of bytes) s+=String.fromCharCode(b); return btoa(s).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,""); }
+function b64urlDecode(str){ str=str.replace(/-/g,"+").replace(/_/g,"/"); while(str.length%4) str+="="; const bin=atob(str); const a=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++) a[i]=bin.charCodeAt(i); return a; }
+
+async function packPayload(obj){
+  const enc=new TextEncoder().encode(JSON.stringify(obj));
+  if("CompressionStream" in window){
+    try{ const cs=new CompressionStream("gzip");
+      const stream=new Blob([enc]).stream().pipeThrough(cs);
+      const buf=new Uint8Array(await new Response(stream).arrayBuffer());
+      return "G."+b64urlEncode(buf);
+    }catch(e){}
+  }
+  return "U."+b64urlEncode(enc);
+}
+async function unpackPayload(code){
+  const i=code.indexOf("."); const mode=code.slice(0,i); const data=code.slice(i+1);
+  const bytes=b64urlDecode(data);
+  if(mode==="G"){ const ds=new DecompressionStream("gzip");
+    const stream=new Blob([bytes]).stream().pipeThrough(ds);
+    const buf=await new Response(stream).arrayBuffer();
+    return JSON.parse(new TextDecoder().decode(buf)); }
+  return JSON.parse(new TextDecoder().decode(bytes));
+}
+function myPayload(){
+  return { ratingsSchemaVersion:1, app:"The Hunt Name Rater", voter:state.voter, exportedAt:nowISO(), events:state.events };
+}
+function shareBase(){ return location.origin+location.pathname; }
+
+let lastLink="";
+async function openShare(){
+  flushNotes();
+  const n=new Set(state.events.map(e=>e.id)).size;
+  if(state.events.length===0){ toast("Rate a few names first 🙂"); return; }
+  const code=await packPayload(myPayload());
+  lastLink=shareBase()+"#r="+code;
+  const tooLong=lastLink.length>14000;
+  sheet(`<div class="grab"></div>
+    <h2>Send your ratings to Arturo</h2>
+    <p class="muted" style="margin:8px 0 0">You've left votes or notes on <b>${n}</b> name${n===1?"":"s"}. Send them over so they land in the shared leaderboard. Nothing is uploaded automatically.</p>
+    ${tooLong?`<p class="tiny" style="color:var(--no);font-weight:700;margin-top:10px">Your link is very long — use “Download file” below instead and send that.</p>`:`<div class="linkbox">${esc(lastLink)}</div>`}
+    <div class="stack">
+      ${tooLong?"":`<button class="btn primary block" data-action="copy-link">📋 Copy link</button>
+      <button class="btn coral block" data-action="share-whatsapp">Share via WhatsApp</button>`}
+      <button class="btn ghost block" data-action="download-mine">⤓ Download file (backup)</button>
+      <button class="btn ghost block" data-action="close-sheet">Close</button>
+    </div>
+    <p class="tiny muted" style="margin-top:14px;text-align:center">Tip: you can keep voting and send an updated link any time. Your newest one replaces the old.</p>`);
+}
+async function copyLink(){ try{ await navigator.clipboard.writeText(lastLink); toast("Link copied — paste it to Arturo 📋"); }catch(e){ toast("Press and hold the link to copy"); } }
+function shareWhatsApp(){
+  const msg="My name ratings for The Hunt 👇\n"+lastLink;
+  const url="https://wa.me/?text="+encodeURIComponent(msg);
+  window.open(url,"_blank");
+}
+function downloadMine(){
+  const blob=new Blob([JSON.stringify(myPayload(),null,2)],{type:"application/json"});
+  downloadBlob(blob, "ratings-"+slug(state.voter)+".json");
+  toast("Saved. Send the file to Arturo.");
+}
+function downloadBlob(blob,name){ const u=URL.createObjectURL(blob); const a=document.createElement("a"); a.href=u; a.download=name; a.click(); setTimeout(()=>URL.revokeObjectURL(u),2000); }
+function slug(s){ return String(s).toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/(^-|-$)/g,"")||"voter"; }
+
+/* ----- import ----- */
+function mergeImported(payload){
+  if(!payload || !payload.voter || !Array.isArray(payload.events)){ toast("That doesn't look like a ratings link/file"); return false; }
+  const cur=state.imported[payload.voter];
+  if(cur && cur.exportedAt && payload.exportedAt && cur.exportedAt>=payload.exportedAt){
+    toast(esc(payload.voter)+"'s ratings are already up to date"); return true;
+  }
+  state.imported[payload.voter]={exportedAt:payload.exportedAt||nowISO(), events:payload.events};
+  save(K_IMPORTED, state.imported);
+  toast("Added "+esc(payload.voter)+"'s ratings ✓");
+  return true;
+}
+async function importFromPaste(){
+  const box=$("#pasteBox"); if(!box) return;
+  let v=(box.value||"").trim(); if(!v){ toast("Paste a link first"); return; }
+  const m=v.match(/#r=([^\s&]+)/) || v.match(/[?&]r=([^\s&]+)/);
+  const code=m?m[1]:v;
+  try{ const payload=await unpackPayload(code); if(mergeImported(payload)){ box.value=""; render(); } }
+  catch(e){ toast("Couldn't read that link — try the file instead"); }
+}
+function loadFile(file){
+  if(!file) return;
+  const r=new FileReader();
+  r.onload=()=>{ try{ const p=JSON.parse(r.result); if(mergeImported(p)) render(); }catch(e){ toast("Couldn't read that file"); } };
+  r.readAsText(file);
+}
+
+/* ----- exports for Arturo ----- */
+function exportMerged(){
+  const map=allVoterEvents(); const events=[];
+  for(const v in map) events.push(...map[v]);
+  const out={ schema:"the-hunt-name-ratings-merged/1", exportedAt:nowISO(), voters:Object.keys(map), events };
+  downloadBlob(new Blob([JSON.stringify(out,null,2)],{type:"application/json"}), "name-ratings-merged.json");
+  toast("Combined results downloaded");
+}
+function exportSummary(){
+  const names=NAMES.map(n=>{ const s=statsFor(n.id); if(!s.voters) return null;
+    return { id:n.id, name:n.name, huntScore:s.score, voters:s.voters,
+      stars:{avg:s.starsAvg!=null?+s.starsAvg.toFixed(2):null, count:s.starsCount},
+      swipe:{yes:s.yes,maybe:s.maybe,no:s.no},
+      duel:{wins:s.dWins,losses:s.dLoss,winRate:s.duelRate!=null?+s.duelRate.toFixed(2):null},
+      shortlists:s.shortlists,
+      perVoter:s.perVoter, comments:s.comments };
+  }).filter(Boolean).sort((a,b)=>(b.huntScore??-1)-(a.huntScore??-1));
+  const out={ schema:"the-hunt-name-summary/1", note:"Digest for folding per-person reactions into each name's 'leans' in names.json. Reference names by id.", generatedAt:nowISO(), votersIncluded:voterList(), names };
+  downloadBlob(new Blob([JSON.stringify(out,null,2)],{type:"application/json"}), "name-feedback-summary.json");
+  toast("Summary for Claude downloaded");
+}
+function showScoring(){
+  sheet(`<div class="grab"></div><h2>How the Hunt Score works</h2>
+    <p class="muted" style="margin-top:8px">A single 0–100 number so names are easy to compare. It blends whatever signals exist for a name:</p>
+    <ul style="line-height:1.7;color:var(--ink-soft)">
+      <li><b>Stars</b> — 50% (average 1–5 rating, rescaled to 0–100).</li>
+      <li><b>Swipe</b> — 25% (yes = full, maybe = half, no = none).</li>
+      <li><b>Duel</b> — 25% (win-rate across head-to-heads). “Both” counts as a win for each name; “Neither” as a loss for each.</li>
+    </ul>
+    <p class="muted">If a name only has some of these, the score uses just those (re-balanced). Shortlists are shown as a tie-breaker, not baked into the number. Every raw count is on the card, so nothing is hidden.</p>
+    <button class="btn primary block" data-action="close-sheet" style="margin-top:10px">Got it</button>`);
+}
+
+/* =========================================================================
+   SHEET + TOAST
+   ========================================================================= */
+function sheet(html){ const bg=document.createElement("div"); bg.className="sheet-bg"; bg.id="sheetbg";
+  bg.innerHTML=`<div class="sheet">${html}</div>`;
+  bg.addEventListener("click",e=>{ if(e.target===bg) closeSheet(); });
+  document.body.appendChild(bg); }
+function closeSheet(){ const s=$("#sheetbg"); if(s) s.remove(); }
+let toastT=null;
+function toast(msg){ const t=$("#toast"); t.innerHTML=msg; t.classList.add("show"); clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove("show"),2200); }
+
+/* =========================================================================
+   ICONS (inline SVG — no external assets)
+   ========================================================================= */
+function compassSVG(size,cls){ return `<svg class="${cls||'brandmark'}" width="${size}" height="${size}" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <circle cx="50" cy="50" r="44" fill="#FBF7EC" stroke="#1F5C46" stroke-width="3"/>
+  <circle cx="50" cy="50" r="44" stroke="#C2922B" stroke-width="1.5" stroke-dasharray="2 5"/>
+  <path d="M50 16 L59 50 L50 84 L41 50 Z" fill="#DD5429"/>
+  <path d="M50 16 L59 50 L50 50 Z" fill="#b53f1c"/>
+  <path d="M16 50 L50 41 L84 50 L50 59 Z" fill="#1F5C46" opacity=".88"/>
+  <circle cx="50" cy="50" r="5" fill="#23271F"/></svg>`; }
+function iconSwipe(){ return `<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="#DD5429" stroke-width="2" stroke-linecap="round"><rect x="6" y="3" width="12" height="18" rx="3" fill="#FBE6DA"/><path d="M9 9h6M9 13h4"/></svg>`; }
+function iconStar(){ return `<svg class="ic" viewBox="0 0 24 24" fill="#F6ECCF" stroke="#C2922B" stroke-width="2" stroke-linejoin="round"><path d="M12 3l2.7 5.8 6.3.7-4.7 4.3 1.3 6.2L12 17l-5.6 3.3 1.3-6.2L3 9.5l6.3-.7z"/></svg>`; }
+function iconDuel(){ return `<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="#1F5C46" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="7" height="12" rx="2" fill="#E3EDE4"/><rect x="14" y="6" width="7" height="12" rx="2" fill="#E3EDE4"/><path d="M12 4v16"/></svg>`; }
+function iconNote(){ return `<svg class="ic" viewBox="0 0 24 24" fill="#F6EFDD" stroke="#2E7D74" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h14v12l-5 4H5z"/><path d="M9 9h6M9 13h4"/></svg>`; }
+function iconTrophy(){ return `<svg class="ic" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#F4EAD6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4h10v4a5 5 0 0 1-10 0z"/><path d="M7 6H4v1a3 3 0 0 0 3 3M17 6h3v1a3 3 0 0 1-3 3M9 18h6M12 13v5"/></svg>`; }
+
+/* =========================================================================
+   BOOT
+   ========================================================================= */
+async function init(){
+  NAMES.forEach(n=>byId[n.id]=n);   // NAMES is defined by the script block below; init runs after it loads
+  // Did someone open a shared link? Import it, then go to results.
+  const hash=location.hash;
+  const m=hash.match(/#r=(.+)$/);
+  if(m){
+    try{ const payload=await unpackPayload(m[1]);
+      if(payload && payload.voter && Array.isArray(payload.events)){
+        mergeImported(payload);
+        history.replaceState(null,"",shareBase());
+        if(!state.voter) state.voter = "Arturo"; // viewer is most likely Arturo collecting results
+        save(K_VOTER, state.voter);
+        state.view="results";
+      }
+    }catch(e){ /* bad link: ignore, normal start */ }
+  }
+  if(!state.voter && state.view!=="results") state.view="welcome";
+  else if(state.voter && state.view==="welcome") state.view="hub";
+  render();
+}
+if(document.readyState==="loading") document.addEventListener("DOMContentLoaded", init);
+else init();
+
+/* keyboard shortcuts (nice on a laptop during a team call) */
+document.addEventListener("keydown", e=>{
+  if(e.target.matches("input,textarea,select")) return;
+  if(state.view==="swipe"){
+    const n=NAMES[state.swipeIdx]; if(!n) return;
+    if(e.key==="ArrowRight"||e.key==="3"){ e.preventDefault(); doSwipe(n.id,"yes"); }
+    else if(e.key==="ArrowLeft"||e.key==="1"){ e.preventDefault(); doSwipe(n.id,"no"); }
+    else if(e.key==="ArrowUp"||e.key==="2"){ e.preventDefault(); doSwipe(n.id,"maybe"); }
+  } else if(state.view==="duel" && state.duel){
+    if(e.key==="ArrowLeft"){ e.preventDefault(); doDuel("a"); }
+    else if(e.key==="ArrowRight"){ e.preventDefault(); doDuel("b"); }
+    else if(e.key==="ArrowUp"){ e.preventDefault(); doDuel("both"); }
+    else if(e.key==="ArrowDown"){ e.preventDefault(); doDuel("neither"); }
+    else if(e.key==="s"||e.key==="S"){ flushNotes(); newDuel(); render(); }
+  } else if(state.view==="rate"){
+    const f=filteredNames(); if(!f.length) return;
+    if(!state.activeId || !f.some(n=>n.id===state.activeId)) state.activeId=f[0].id;
+    const id=state.activeId;
+    if(e.key>="1" && e.key<="5"){ e.preventDefault(); setActive(id); doStar(id, +e.key); }
+    else if(e.key==="f"||e.key==="F"){ e.preventDefault(); const btn=document.querySelector(`.namecard[data-card="${id}"] .js-heart`); if(btn) doHeart(id, btn); }
+    else if(e.key==="ArrowDown"){ e.preventDefault(); moveActive(1); }
+    else if(e.key==="ArrowUp"){ e.preventDefault(); moveActive(-1); }
+  }
+});
+</script>
+
+<script>
+/* =========================================================================
+   NAMES  —  a READ-ONLY copy of BRANDING/names.json (slimmed to what the
+   app shows). The app never writes this back. To refresh after names.json
+   changes, replace the array below. Reference names only by their id.
+   ========================================================================= */
+window.NAMES = [{"id":"n001","name":"Gather Round","variants":[],"type":"suggestive","tags":["two-words","warm","corporate-flex"],"meaning":"The campfire/storytelling call to come together. Says what you actually sell: people, together.","scores":{"discovery":null,"connection":null,"play":null,"travel":null},"flags":[],"status":"idea"},{"id":"n002","name":"Kindred","variants":[],"type":"suggestive","tags":["one-word","warm","premium"],"meaning":"Kinship, people who belong together.","scores":{"discovery":null,"connection":null,"play":null,"travel":null},"flags":[],"status":"idea"},{"id":"n003","name":"Huddle","variants":[],"type":"suggestive","tags":["one-word","warm","team"],"meaning":"A team huddle; coming close together.","scores":{"discovery":null,"connection":null,"play":null,"travel":null},"flags":[],"status":"idea"},{"id":"n004","name":"Caper","variants":[],"type":"suggestive","tags":["one-word","playful","premium"],"meaning":"A playful, slightly mischievous escapade; heist-chic.","scores":{"discovery":null,"connection":null,"play":null,"travel":null},"flags":[],"status":"idea"},{"id":"n005","name":"Plot","variants":[],"type":"suggestive","tags":["one-word","short","clever"],"meaning":"Triple meaning: storyline, scheme, plot of land.","scores":{"discovery":null,"connection":null,"play":null,"travel":null},"flags":[],"status":"idea"},{"id":"n006","name":"Gumshoe","variants":[],"type":"suggestive","tags":["one-word","playful","detective"],"meaning":"Old slang for a detective; fits clue-solving and sleuthing.","scores":{"discovery":null,"connection":null,"play":null,"travel":null},"flags":[],"status":"idea"},{"id":"n007","name":"Lark","variants":[],"type":"suggestive","tags":["one-word","short","whimsical"],"meaning":"'Off on a lark' = spontaneous fun.","scores":{"discovery":null,"connection":null,"play":null,"travel":null},"flags":[],"status":"idea"},{"id":"n008","name":"Jaunt","variants":[],"type":"suggestive","tags":["one-word","travel","whimsical"],"meaning":"A short pleasure trip.","scores":{"discovery":null,"connection":null,"play":null,"travel":null},"flags":[],"status":"idea"},{"id":"n009","name":"Mosey","variants":[],"type":"suggestive","tags":["one-word","casual","warm"],"meaning":"To wander leisurely.","scores":{"discovery":null,"connection":null,"play":null,"travel":null},"flags":[],"status":"idea"},{"id":"n010","name":"Escapade","variants":[],"type":"suggestive","tags":["one-word","playful","bilingual"],"meaning":"A fun, adventurous outing. In Spanish 'escapada' means a getaway.","scores":{"discovery":null,"connection":null,"play":null,"travel":null},"flags":[],"status":"idea"},{"id":"n011","name":"Wayfare","variants":[],"type":"coined","tags":["one-word","coined","discovery"],"meaning":"Coined from 'wayfaring'; travelling and finding your way.","scores":{"discovery":null,"connection":null,"play":null,"travel":null},"flags":[],"status":"idea"},{"id":"n012","name":"Scavva","variants":["Scavaa","Scavvi"],"type":"coined","tags":["short","playful","scalable","ecosystem"],"meaning":"From 'scavenger' with a Canva-like ring. Easy to remember, sounds a bit like slang, phonetically satisfying; short names scale.","scores":{"discovery":null,"connection":null,"play":5,"travel":null},"flags":[],"status":"shortlist"},{"id":"n013","name":"Curio","variants":[],"type":"suggestive","tags":["short","curiosity"],"meaning":"Short for curiosity, the innate drive to explore, learn, and seek novelty.","scores":{"discovery":null,"connection":null,"play":null,"travel":null},"flags":[],"status":"idea"},{"id":"n014","name":"Scova","variants":[],"type":"coined","tags":["short","coined"],"meaning":"Scavenger + Discover, catchy.","scores":{"discovery":null,"connection":null,"play":null,"travel":null},"flags":[],"status":"idea"},{"id":"n015","name":"Trova","variants":["Trove"],"type":"suggestive","tags":["short","discovery","treasure"],"meaning":"A trove is a rich store of treasures. 'Trovare' means 'to find' in Italian (a serendipitous surprise). Claude's spelling variant: Trove.","scores":{"discovery":5,"connection":null,"play":null,"travel":null},"flags":[],"status":"idea"},{"id":"n016","name":"Questy","variants":[],"type":"suggestive","tags":["quest","playful"],"meaning":"Quest + a friendly '-y' ending. Easy, makes sense.","scores":{"discovery":null,"connection":null,"play":null,"travel":null},"flags":[],"status":"idea"},{"id":"n017","name":"Clueprint","variants":[],"type":"coined","tags":["portmanteau","clue"],"meaning":"Clue + blueprint.","scores":{"discovery":null,"connection":null,"play":null,"travel":null},"flags":[],"status":"idea"},{"id":"n018","name":"CityScope","variants":[],"type":"descriptive","tags":["compound","city"],"meaning":"Play on 'cityscape' plus 'scope', as in to scope out an area.","scores":{"discovery":null,"connection":null,"play":null,"travel":null},"flags":["restrictive"],"status":"idea"},{"id":"n019","name":"Questify","variants":[],"type":"suggestive","tags":["quest","tech-suffix"],"meaning":"Quest + '-ify', the English suffix meaning to make or turn into (simplify, clarify). Subtly implies 'this helps you become...'.","scores":{"discovery":null,"connection":null,"play":null,"travel":null},"flags":["trendy"],"status":"idea"},{"id":"n020","name":"Breadcrumb","variants":[],"type":"suggestive","tags":["metaphor","trail","discovery"],"meaning":"Something you leave behind, a trail you follow, a clue, a storytelling and navigation device. 'It says discovery.'","scores":{"discovery":4,"connection":null,"play":null,"travel":null},"flags":[],"status":"idea"},{"id":"n021","name":"Detour","variants":[],"type":"suggestive","tags":["journey","exploration"],"meaning":"Taking an alternate path, i.e. exploring a city off the obvious route.","scores":{"discovery":null,"connection":null,"play":null,"travel":5},"flags":[],"status":"idea"},{"id":"n022","name":"Redisco","variants":[],"type":"coined","tags":["coined","rediscover"],"meaning":"From 'rediscover' (with a hint of 'disco').","scores":{"discovery":null,"connection":null,"play":null,"travel":null},"flags":[],"status":"idea"},{"id":"n023","name":"HiddenGem","variants":["Hidden Gem"],"type":"suggestive","tags":["idiom","discovery"],"meaning":"A hidden gem, an undiscovered treasure or place.","scores":{"discovery":null,"connection":null,"play":null,"travel":null},"flags":[],"status":"idea"},{"id":"n024","name":"InQuest","variants":[],"type":"suggestive","tags":["quest","wordplay"],"meaning":"In + quest (also reads as 'inquest', an investigation).","scores":{"discovery":null,"connection":null,"play":null,"travel":null},"flags":[],"status":"idea"},{"id":"n025","name":"Wayve","variants":[],"type":"coined","tags":["coined","respelling"],"meaning":"A respelling of 'wave' / play on 'way'.","scores":{"discovery":null,"connection":null,"play":null,"travel":null},"flags":["spelling-challenged","copycat"],"status":"idea"},{"id":"n026","name":"Wundo","variants":[],"type":"coined","tags":["coined","wonder"],"meaning":"Coined; evokes 'wonder'.","scores":{"discovery":null,"connection":null,"play":null,"travel":null},"flags":[],"status":"idea"},{"id":"n027","name":"ClanQuest","variants":[],"type":"suggestive","tags":["compound","family-angle","quest"],"meaning":"Clan (family/group) + quest.","scores":{"discovery":null,"connection":null,"play":null,"travel":null},"flags":["restrictive"],"status":"idea"},{"id":"n028","name":"KinQuest","variants":[],"type":"suggestive","tags":["compound","family-angle","quest"],"meaning":"Kin (family) + quest.","scores":{"discovery":null,"connection":null,"play":null,"travel":null},"flags":["restrictive"],"status":"idea"},{"id":"n029","name":"Kinvo","variants":[],"type":"coined","tags":["portmanteau","family-angle"],"meaning":"Kin + convo (conversation).","scores":{"discovery":null,"connection":null,"play":null,"travel":null},"flags":[],"status":"idea"},{"id":"n030","name":"Roamly","variants":["Roamlee"],"type":"coined","tags":["short","warm","coined","playful"],"meaning":"Combines the freedom of wandering a city with a warm, collective group mindset.","scores":{"discovery":5,"connection":4,"play":3,"travel":2},"flags":["trendy"],"status":"idea"},{"id":"n031","name":"Loop","variants":[],"type":"suggestive","tags":["short","minimalist","premium"],"meaning":"Evokes a shared journey that smoothly brings a group back together, completing a circuit of connection.","scores":{"discovery":4,"connection":5,"play":2,"travel":2},"flags":[],"status":"idea"},{"id":"n032","name":"Amble","variants":[],"type":"suggestive","tags":["short","warm","premium"],"meaning":"Refers to a leisurely, premium pace of exploration that prioritizes conversation over a frantic race.","scores":{"discovery":4,"connection":4,"play":3,"travel":2},"flags":[],"status":"idea"},{"id":"n033","name":"Rally","variants":[],"type":"suggestive","tags":["short","energetic","playful","premium"],"meaning":"Evokes coming together for a shared, energetic destination event or a premium team outing.","scores":{"discovery":3,"connection":5,"play":4,"travel":2},"flags":[],"status":"idea"},{"id":"n034","name":"Grove","variants":[],"type":"suggestive","tags":["short","warm","premium","fresh"],"meaning":"A welcoming cluster of trees, symbolizing a close-knit group gathering to explore a shared path.","scores":{"discovery":4,"connection":4,"play":2,"travel":2},"flags":[],"status":"idea"},{"id":"n035","name":"Savor","variants":["Savour"],"type":"suggestive","tags":["short","warm","premium"],"meaning":"Encourages a group to slow down, take in hidden urban details, and deeply enjoy each other's company.","scores":{"discovery":3,"connection":5,"play":2,"travel":3},"flags":[],"status":"idea"},{"id":"n036","name":"Trace","variants":[],"type":"suggestive","tags":["short","minimalist","premium"],"meaning":"Evokes uncovering hidden layers of a city while charting a collective path forward.","scores":{"discovery":5,"connection":3,"play":2,"travel":2},"flags":[],"status":"idea"},{"id":"n037","name":"Fable","variants":[],"type":"suggestive","tags":["short","playful","premium"],"meaning":"Suggests that the group is weaving their own legendary story and shared history through the outing.","scores":{"discovery":4,"connection":4,"play":3,"travel":1},"flags":[],"status":"idea"},{"id":"n038","name":"Atlas","variants":[],"type":"suggestive","tags":["short","premium","classic"],"meaning":"Evokes curated premium navigation and a sophisticated framework for charting local discoveries.","scores":{"discovery":5,"connection":3,"play":2,"travel":4},"flags":[],"status":"idea"},{"id":"n039","name":"Glint","variants":[],"type":"suggestive","tags":["short","minimalist","premium"],"meaning":"A sudden spark of light that captures the immediate thrill of discovery and shared laughter.","scores":{"discovery":5,"connection":3,"play":3,"travel":1},"flags":[],"status":"idea"},{"id":"n040","name":"Folk","variants":[],"type":"suggestive","tags":["short","warm","human"],"meaning":"Deeply human and down-to-earth, emphasizing community, shared culture, and together-time.","scores":{"discovery":2,"connection":5,"play":3,"travel":1},"flags":[],"status":"idea"},{"id":"n041","name":"Banter","variants":[],"type":"suggestive","tags":["short","playful","human"],"meaning":"Highlights the witty, warm, and playful communication that naturally flows between participants during the experience.","scores":{"discovery":3,"connection":5,"play":4,"travel":1},"flags":[],"status":"idea"},{"id":"n042","name":"Canopy","variants":[],"type":"suggestive","tags":["warm","premium","fresh"],"meaning":"Evokes an overarching, protective space for premium outdoor gatherings and shared exploration.","scores":{"discovery":4,"connection":4,"play":2,"travel":2},"flags":[],"status":"idea"},{"id":"n043","name":"Plaza","variants":[],"type":"suggestive","tags":["short","urban","warm"],"meaning":"A cross-market friendly term referencing the vibrant, open public square where community and discovery meet.","scores":{"discovery":4,"connection":5,"play":2,"travel":3},"flags":[],"status":"idea"},{"id":"n044","name":"Gusto","variants":[],"type":"suggestive","tags":["short","playful","energetic"],"meaning":"Evokes tackling a new city adventure with shared enthusiasm, high spirits, and mutual delight.","scores":{"discovery":3,"connection":4,"play":5,"travel":2},"flags":[],"status":"idea"},{"id":"n045","name":"Rambler","variants":[],"type":"suggestive","tags":["short","human","playful"],"meaning":"Celebrates the human explorer who wanders for pure pleasure, focused entirely on the shared outing.","scores":{"discovery":4,"connection":4,"play":3,"travel":2},"flags":[],"status":"idea"},{"id":"n046","name":"Bound","variants":[],"type":"suggestive","tags":["short","minimalist","premium"],"meaning":"A dual-meaning word that signifies being tied tightly together by bonds while actively moving forward on an adventure.","scores":{"discovery":4,"connection":4,"play":3,"travel":2},"flags":[],"status":"idea"},{"id":"n047","name":"Sonder","variants":[],"type":"suggestive","tags":["short","premium","human"],"meaning":"The rich realization that every passerby has a vivid life story, elevating city exploration into deep empathy and connection.","scores":{"discovery":5,"connection":5,"play":1,"travel":2},"flags":["curse-of-knowledge"],"status":"idea"},{"id":"n048","name":"Bondly","variants":["Bondlee"],"type":"coined","tags":["short","warm","coined"],"meaning":"A friendly, modern refinement of the word bond, explicitly prioritizing relationship-strengthening through interactive outings.","scores":{"discovery":3,"connection":5,"play":3,"travel":1},"flags":[],"status":"idea"},{"id":"n049","name":"Clover","variants":[],"type":"suggestive","tags":["short","playful","warm"],"meaning":"Evokes lighthearted good luck, searching for rare hidden gems, and an optimistic group vibe.","scores":{"discovery":4,"connection":4,"play":3,"travel":1},"flags":[],"status":"idea"},{"id":"n050","name":"Verve","variants":[],"type":"suggestive","tags":["short","premium","energetic"],"meaning":"Brings a sophisticated energy, vitality, and flair to team outings and curated urban discoveries.","scores":{"discovery":3,"connection":4,"play":4,"travel":1},"flags":[],"status":"idea"},{"id":"n051","name":"Chapter","variants":[],"type":"suggestive","tags":["short","premium","narrative"],"meaning":"Frames the curated gathering as an unforgettable new milestone or story chapter written collectively by the group.","scores":{"discovery":4,"connection":4,"play":2,"travel":2},"flags":[],"status":"idea"},{"id":"n052","name":"Echo","variants":[],"type":"suggestive","tags":["short","minimalist","premium"],"meaning":"Implies the lasting resonance of shared laughter and collective discoveries made across a city.","scores":{"discovery":4,"connection":4,"play":2,"travel":2},"flags":[],"status":"idea"},{"id":"n053","name":"Seekly","variants":["Seeklee"],"type":"coined","tags":["short","playful","coined"],"meaning":"A highly approachable coined word that transforms the act of seeking into a recurring, community-centric event.","scores":{"discovery":5,"connection":4,"play":3,"travel":1},"flags":[],"status":"idea"},{"id":"n054","name":"Rove","variants":[],"type":"suggestive","tags":["short","playful","premium"],"meaning":"Evokes lighthearted, premium wandering through city streets focused completely on the collective journey.","scores":{"discovery":5,"connection":3,"play":4,"travel":2},"flags":[],"status":"idea"},{"id":"n055","name":"Beacon","variants":[],"type":"suggestive","tags":["short","premium","warm"],"meaning":"A guiding light that beautifully draws people together for shared, intentional discovery.","scores":{"discovery":5,"connection":4,"play":2,"travel":2},"flags":[],"status":"idea"},{"id":"n056","name":"Tempo","variants":[],"type":"suggestive","tags":["short","bilingual","premium"],"meaning":"Sets a relaxed, human pace for a group to explore without ever feeling frantic or rushed.","scores":{"discovery":3,"connection":5,"play":3,"travel":2},"flags":[],"status":"idea"},{"id":"n057","name":"Oasis","variants":[],"type":"suggestive","tags":["bilingual","premium","warm"],"meaning":"Represents a refreshing, curated pocket of connection hidden seamlessly within a bustling city landscape.","scores":{"discovery":4,"connection":4,"play":2,"travel":3},"flags":[],"status":"idea"},{"id":"n058","name":"Vista","variants":[],"type":"suggestive","tags":["short","bilingual","fresh"],"meaning":"Evokes wide open perspectives, stunning cityscapes, and mutual breakthroughs in discovery.","scores":{"discovery":5,"connection":3,"play":2,"travel":4},"flags":[],"status":"idea"},{"id":"n059","name":"Orbit","variants":[],"type":"suggestive","tags":["short","playful","modern"],"meaning":"Implies a close-knit group moving in perfect harmony around a central, exciting local experience.","scores":{"discovery":4,"connection":4,"play":3,"travel":1},"flags":[],"status":"idea"},{"id":"n060","name":"Verse","variants":[],"type":"suggestive","tags":["short","premium","narrative"],"meaning":"Frames the group's custom experience as a memorable, premium narrative they actively write together.","scores":{"discovery":4,"connection":4,"play":2,"travel":1},"flags":[],"status":"idea"},{"id":"n061","name":"Cadence","variants":[],"type":"suggestive","tags":["premium","sophisticated","bilingual"],"meaning":"Refers to a harmonious, shared rhythm that beautifully aligns both families and corporate teams.","scores":{"discovery":3,"connection":5,"play":2,"travel":1},"flags":[],"status":"idea"},{"id":"n062","name":"Chord","variants":[],"type":"suggestive","tags":["short","premium","warm"],"meaning":"Evokes striking a perfect, resonant emotional frequency among several distinct people simultaneously.","scores":{"discovery":3,"connection":5,"play":3,"travel":1},"flags":[],"status":"idea"},{"id":"n063","name":"Agora","variants":[],"type":"suggestive","tags":["premium","bilingual","human"],"meaning":"Nods to the classic historical public square built explicitly for gathering, conversation, and collective discovery.","scores":{"discovery":4,"connection":5,"play":2,"travel":2},"flags":[],"status":"idea"},{"id":"n064","name":"Amity","variants":[],"type":"suggestive","tags":["warm","premium","human"],"meaning":"An elegant, elevated term for friendship, harmony, and deep social bonds forged through activity.","scores":{"discovery":2,"connection":5,"play":3,"travel":1},"flags":[],"status":"idea"},{"id":"n065","name":"Elan","variants":[],"type":"suggestive","tags":["short","premium","energetic"],"meaning":"Brings a sense of polished, distinctive flair and enthusiastic energy to corporate and casual group outings.","scores":{"discovery":3,"connection":4,"play":4,"travel":2},"flags":[],"status":"idea"},{"id":"n066","name":"Vivid","variants":[],"type":"suggestive","tags":["short","energetic","modern"],"meaning":"Evokes bright, intensely clear memories and highly engaging, real-world collective interactions.","scores":{"discovery":4,"connection":4,"play":3,"travel":2},"flags":[],"status":"idea"},{"id":"n067","name":"Cove","variants":[],"type":"suggestive","tags":["short","warm","premium"],"meaning":"A cozy, premium metaphorical harbor for groups to gather and connect away from urban chaos.","scores":{"discovery":3,"connection":5,"play":2,"travel":2},"flags":[],"status":"idea"},{"id":"n068","name":"Haven","variants":[],"type":"suggestive","tags":["short","warm","premium"],"meaning":"Suggests an upscale, safe, and welcoming shared environment built entirely around meaningful human interaction.","scores":{"discovery":2,"connection":5,"play":2,"travel":2},"flags":[],"status":"idea"},{"id":"n069","name":"Patio","variants":[],"type":"suggestive","tags":["short","playful","bilingual"],"meaning":"Evokes an approachable, fresh, open-air gathering space tailored perfectly for laughter and storytelling.","scores":{"discovery":3,"connection":5,"play":4,"travel":2},"flags":[],"status":"idea"},{"id":"n070","name":"Clink","variants":[],"type":"suggestive","tags":["short","playful","premium"],"meaning":"Captures the upscale, celebratory sound of glasses meeting, signaling toasts and shared group milestones.","scores":{"discovery":3,"connection":4,"play":5,"travel":1},"flags":[],"status":"idea"},{"id":"n071","name":"Chime","variants":[],"type":"suggestive","tags":["short","playful","warm"],"meaning":"A lighthearted word that suggests individual group members coming into beautiful alignment and consensus.","scores":{"discovery":3,"connection":5,"play":4,"travel":1},"flags":[],"status":"idea"},{"id":"n072","name":"Glide","variants":[],"type":"suggestive","tags":["short","premium","modern"],"meaning":"Promises a fluid, premium web app user experience as your group effortlessly navigates a city.","scores":{"discovery":4,"connection":3,"play":3,"travel":3},"flags":[],"status":"idea"},{"id":"n073","name":"Pulse","variants":[],"type":"suggestive","tags":["short","energetic","modern"],"meaning":"Connects the rhythmic, living heartbeat of a team or family directly with the energetic pace of a neighborhood.","scores":{"discovery":4,"connection":4,"play":4,"travel":1},"flags":[],"status":"idea"},{"id":"n074","name":"Twist","variants":[],"type":"suggestive","tags":["short","playful","clever"],"meaning":"Indicates a clever, refreshing spin on exploring a district that keeps players playfully engaged.","scores":{"discovery":4,"connection":3,"play":5,"travel":1},"flags":[],"status":"idea"},{"id":"n075","name":"Spin","variants":[],"type":"suggestive","tags":["short","playful","energetic"],"meaning":"A dynamic, high-energy term for taking a quick, refreshing trip around a new city quarter.","scores":{"discovery":4,"connection":3,"play":5,"travel":2},"flags":[],"status":"idea"},{"id":"n076","name":"Nova","variants":[],"type":"suggestive","tags":["short","bilingual","premium"],"meaning":"Evokes a brilliant flash of sudden astronomical discovery and an exciting, elevated user experience.","scores":{"discovery":5,"connection":3,"play":3,"travel":2},"flags":[],"status":"idea"},{"id":"n077","name":"Stellar","variants":[],"type":"suggestive","tags":["premium","bilingual","fresh"],"meaning":"Conveys an exceptional, premium tier of curated service while maintaining a sense of cosmic fun.","scores":{"discovery":4,"connection":4,"play":3,"travel":2},"flags":[],"status":"idea"},{"id":"n078","name":"Prism","variants":[],"type":"suggestive","tags":["short","bilingual","premium"],"meaning":"Splits a simple city walk into multiple beautiful, unexpected dimensions of hidden discovery.","scores":{"discovery":5,"connection":3,"play":3,"travel":2},"flags":[],"status":"idea"},{"id":"n079","name":"Along","variants":[],"type":"suggestive","tags":["simple","warm","premium"],"meaning":"Captures the feeling of sharing an experience side by side.","scores":{"discovery":3,"connection":5,"play":2,"travel":2},"flags":[],"status":"idea"},{"id":"n080","name":"Nestle","variants":["Nestl"],"type":"suggestive","tags":["warm","human","classic"],"meaning":"Suggests drawing closer through shared moments.","scores":{"discovery":2,"connection":5,"play":2,"travel":1},"flags":["copycat"],"status":"idea"},{"id":"n081","name":"Drift","variants":[],"type":"suggestive","tags":["minimal","modern","calm"],"meaning":"Suggests unhurried exploration that naturally brings people together.","scores":{"discovery":4,"connection":3,"play":2,"travel":4},"flags":[],"status":"idea"},{"id":"n082","name":"Mingle","variants":[],"type":"suggestive","tags":["friendly","warm","social"],"meaning":"Centers on people connecting through shared experiences.","scores":{"discovery":2,"connection":5,"play":3,"travel":1},"flags":[],"status":"idea"},{"id":"n083","name":"Plover","variants":[],"type":"suggestive","tags":["nature","distinctive","premium"],"meaning":"A migratory bird that subtly evokes movement and togetherness.","scores":{"discovery":3,"connection":3,"play":2,"travel":4},"flags":[],"status":"idea"},{"id":"n084","name":"Meander","variants":["Meandr"],"type":"suggestive","tags":["elevated","exploration","calm"],"meaning":"Suggests relaxed discovery rather than racing to a destination.","scores":{"discovery":5,"connection":3,"play":2,"travel":4},"flags":[],"status":"idea"},{"id":"n085","name":"Brighten","variants":["Brightn"],"type":"suggestive","tags":["positive","warm","friendly"],"meaning":"Hints at experiences that leave people feeling closer and happier.","scores":{"discovery":2,"connection":4,"play":3,"travel":1},"flags":[],"status":"idea"},{"id":"n086","name":"Lumen","variants":[],"type":"suggestive","tags":["premium","clean","modern"],"meaning":"Represents illuminating places and relationships through shared discovery.","scores":{"discovery":4,"connection":3,"play":2,"travel":2},"flags":[],"status":"idea"},{"id":"n087","name":"Kindle","variants":["Kindl"],"type":"suggestive","tags":["warm","memorable","friendly"],"meaning":"Evokes sparking curiosity and human connection.","scores":{"discovery":3,"connection":5,"play":2,"travel":1},"flags":["copycat"],"status":"idea"},{"id":"n088","name":"Ramble","variants":[],"type":"suggestive","tags":["playful","warm","outdoors"],"meaning":"Feels like a joyful outing where conversation and discovery unfold together.","scores":{"discovery":5,"connection":3,"play":3,"travel":4},"flags":[],"status":"idea"},{"id":"n089","name":"Compass","variants":["Compas"],"type":"suggestive","tags":["premium","direction","timeless"],"meaning":"Points people toward meaningful shared experiences.","scores":{"discovery":4,"connection":3,"play":2,"travel":5},"flags":[],"status":"idea"},{"id":"n090","name":"Wonder","variants":["Wndr"],"type":"suggestive","tags":["uplifting","premium","warm"],"meaning":"Captures curiosity, delight and memorable moments together.","scores":{"discovery":5,"connection":4,"play":3,"travel":2},"flags":[],"status":"idea"},{"id":"n091","name":"Hearth","variants":[],"type":"suggestive","tags":["warm","classic","human"],"meaning":"Represents belonging and gathering wherever people meet.","scores":{"discovery":1,"connection":5,"play":1,"travel":1},"flags":[],"status":"idea"},{"id":"n092","name":"Tandem","variants":[],"type":"suggestive","tags":["collaborative","clean","premium"],"meaning":"Highlights doing things together rather than alone.","scores":{"discovery":2,"connection":5,"play":2,"travel":2},"flags":[],"status":"idea"},{"id":"n093","name":"Yonder","variants":[],"type":"suggestive","tags":["curious","outdoors","distinctive"],"meaning":"Invites people toward what's just beyond the familiar.","scores":{"discovery":5,"connection":2,"play":2,"travel":5},"flags":[],"status":"idea"},{"id":"n094","name":"Strollo","variants":["Strolo"],"type":"coined","tags":["coined","playful","short"],"meaning":"A friendly twist on stroll that feels active and social.","scores":{"discovery":4,"connection":3,"play":4,"travel":3},"flags":[],"status":"idea"},{"id":"n095","name":"Nearby","variants":["NearBy"],"type":"suggestive","tags":["friendly","local","simple"],"meaning":"Makes local experiences feel inviting and accessible.","scores":{"discovery":3,"connection":3,"play":2,"travel":2},"flags":["restrictive"],"status":"idea"},{"id":"n096","name":"Common","variants":[],"type":"suggestive","tags":["minimal","human","premium"],"meaning":"Reflects shared ground and shared experiences.","scores":{"discovery":2,"connection":5,"play":1,"travel":1},"flags":[],"status":"idea"},{"id":"n097","name":"Hither","variants":[],"type":"suggestive","tags":["distinctive","classic","warm"],"meaning":"An old English invitation that feels welcoming and adventurous.","scores":{"discovery":4,"connection":3,"play":2,"travel":3},"flags":[],"status":"idea"},{"id":"n098","name":"Unfold","variants":[],"type":"suggestive","tags":["elevated","story","warm"],"meaning":"Suggests experiences and relationships opening up over time.","scores":{"discovery":5,"connection":4,"play":2,"travel":2},"flags":[],"status":"idea"},{"id":"n099","name":"Woven","variants":[],"type":"suggestive","tags":["premium","warm","memorable"],"meaning":"Represents people and memories becoming more closely connected.","scores":{"discovery":2,"connection":5,"play":2,"travel":1},"flags":[],"status":"idea"}];
+</script>
+</body>
+</html>
