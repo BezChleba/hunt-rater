@@ -292,8 +292,14 @@ input,textarea,select{font-family:inherit;font-size:1rem;color:var(--ink);}
 .empty{text-align:center;padding:50px 20px;color:var(--ink-soft);}
 .empty .compass{width:70px;height:70px;opacity:.6;margin-bottom:14px;}
 
-.importbox{padding:16px;margin-bottom:16px;background:var(--card2);}
-.importbox textarea{width:100%;min-height:60px;resize:vertical;padding:10px 12px;border-radius:11px;border:1.5px solid var(--line);background:var(--card);margin-top:8px;}
+.import-mini{margin-top:14px;}
+.import-mini summary{cursor:pointer;font-size:.82rem;font-weight:600;color:var(--ink-soft);list-style:none;display:inline-flex;align-items:center;gap:7px;padding:6px 0;}
+.import-mini summary::-webkit-details-marker{display:none;}
+.import-mini summary::before{content:"▸";color:var(--ink-faint);display:inline-block;transition:transform .2s;}
+.import-mini[open] summary::before{transform:rotate(90deg);}
+.import-mini-body{margin-top:8px;}
+.import-mini-body textarea{width:100%;min-height:46px;resize:vertical;padding:9px 11px;border-radius:10px;border:1.5px solid var(--line);background:var(--card2);font-size:.9rem;}
+.import-mini-body .row{margin-top:8px;}
 
 /* ---------- sticky action bar ---------- */
 .actionbar{position:fixed;left:0;right:0;bottom:0;z-index:30;
@@ -854,14 +860,6 @@ function viewResults(){
   let head=`<div class="fade-in">
     <div class="vhead"><a class="back" data-action="go" data-view="hub">‹ Hub</a><h2>Leaderboard</h2></div>
     <p class="subhead">Voting as <b>${esc(state.voter)}</b>. Counting <b>${voters.length||1}</b> ${voters.length===1?"person":"people"}: ${voters.map(esc).join(", ")||"just you"}.</p>
-    <div class="card importbox">
-      <div class="row wrap" style="justify-content:space-between">
-        <div><b>Got results from someone?</b><div class="tiny muted">Paste the link they sent you, or load their file.</div></div>
-        <label class="btn ghost sm">Load file<input type="file" accept=".json,application/json" data-action="load-file" style="display:none"></label>
-      </div>
-      <textarea id="pasteBox" placeholder="Paste a 'Send my ratings' link here…"></textarea>
-      <button class="btn primary sm block" data-action="import-link" style="margin-top:8px">Add their ratings</button>
-    </div>
     <button class="btn ghost sm block" data-action="open-addname" style="margin-bottom:14px">✚ Suggest a new name</button>
     <div class="toolbar">
       <input class="search" placeholder="Search names…" value="${esc(state.filters.search)}" data-action="filter-search">
@@ -872,9 +870,19 @@ function viewResults(){
       <label class="chk"><input type="checkbox" data-action="filter-flag" ${state.filters.hideFlagged?"checked":""}>Hide flagged</label>
     </div>`;
 
+  const importMini=`<details class="import-mini">
+      <summary>Add results from a link or file (backup)</summary>
+      <div class="import-mini-body">
+        <textarea id="pasteBox" placeholder="Paste a 'Send my ratings' link…"></textarea>
+        <div class="row" style="gap:8px">
+          <button class="btn primary sm" data-action="import-link">Add their ratings</button>
+          <label class="btn ghost sm">Load file<input type="file" accept=".json,application/json" data-action="load-file" style="display:none"></label>
+        </div>
+      </div>
+    </details>`;
   if(!hasVotes){
     head+=`<div class="empty">${compassSVG(70,"compass")}<h3 style="font-size:1.35rem">No votes yet</h3>
-      <p>Rate some names, or add someone's results above, and the leaderboard fills in.</p></div></div>`;
+      <p>Rate some names and the leaderboard fills in${BACKEND?" — votes save automatically":""}.</p></div>${importMini}</div>`;
     return head;
   }
   const body=rows.map(({n,s},i)=>lbRow(n,s,i)).join("");
@@ -883,7 +891,8 @@ function viewResults(){
       <button class="btn ghost sm" data-action="how-scoring">ⓘ How the score works</button>
       <button class="btn ghost sm" data-action="export-merged">⤓ Export combined results</button>
       <button class="btn ghost sm" data-action="export-summary">⤓ Summary for Claude</button>
-    </div></div>`;
+    </div>
+    ${importMini}</div>`;
   return head+body+foot;
 }
 function lbRow(n,s,i){
